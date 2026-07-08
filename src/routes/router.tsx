@@ -1,14 +1,24 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, Navigate } from 'react-router';
 
+import { ProtectedRoute } from '@/features/auth';
 import { AppLayout } from '@/layouts/AppLayout';
 import { LoadingPage } from '@/pages/LoadingPage';
+
+const LoginPage = lazy(() =>
+  import('@/features/auth/pages/LoginPage').then((module) => ({
+    default: module.LoginPage,
+  })),
+);
 
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 );
 const NewInvoicePage = lazy(() =>
   import('@/pages/NewInvoicePage').then((module) => ({ default: module.NewInvoicePage })),
+);
+const InvoicesPage = lazy(() =>
+  import('@/pages/InvoicesPage').then((module) => ({ default: module.InvoicesPage })),
 );
 const InvoiceHistoryPage = lazy(() =>
   import('@/pages/InvoiceHistoryPage').then((module) => ({
@@ -44,36 +54,30 @@ const withSuspense = (element: React.ReactNode) => (
 
 export const router = createBrowserRouter([
   {
-    path: '/',
-    element: <AppLayout />,
+    path: '/login',
+    element: withSuspense(<LoginPage />),
+  },
+  {
+    element: <ProtectedRoute />,
     errorElement: withSuspense(<ErrorPage />),
     children: [
-      { index: true, element: withSuspense(<DashboardPage />) },
       {
-        path: 'invoices/new',
-        element: withSuspense(<NewInvoicePage />),
+        path: '/',
+        element: <AppLayout />,
+        children: [
+          { index: true, element: <Navigate to="/dashboard" replace /> },
+          { path: 'dashboard', element: withSuspense(<DashboardPage />) },
+          { path: 'invoices', element: withSuspense(<InvoicesPage />) },
+          { path: 'invoices/new', element: withSuspense(<NewInvoicePage />) },
+          { path: 'invoices/history', element: <Navigate to="/history" replace /> },
+          { path: 'history', element: withSuspense(<InvoiceHistoryPage />) },
+          { path: 'customers', element: withSuspense(<CustomersPage />) },
+          { path: 'products', element: withSuspense(<ProductsPage />) },
+          { path: 'payments', element: withSuspense(<PaymentsPage />) },
+          { path: 'settings', element: withSuspense(<SettingsPage />) },
+          { path: '*', element: withSuspense(<NotFoundPage />) },
+        ],
       },
-      {
-        path: 'invoices/history',
-        element: withSuspense(<InvoiceHistoryPage />),
-      },
-      {
-        path: 'customers',
-        element: withSuspense(<CustomersPage />),
-      },
-      {
-        path: 'products',
-        element: withSuspense(<ProductsPage />),
-      },
-      {
-        path: 'payments',
-        element: withSuspense(<PaymentsPage />),
-      },
-      {
-        path: 'settings',
-        element: withSuspense(<SettingsPage />),
-      },
-      { path: '*', element: withSuspense(<NotFoundPage />) },
     ],
   },
 ]);
