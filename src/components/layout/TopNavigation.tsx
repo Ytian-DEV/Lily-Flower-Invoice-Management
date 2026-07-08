@@ -1,12 +1,23 @@
-import { Bell, Menu, Moon, UserCircle } from 'lucide-react';
+import { Bell, LogOut, Menu, Moon, UserCircle } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 import { LogoPlaceholder } from '@/components/layout/LogoPlaceholder';
+import { Button } from '@/components/ui';
+import { useAuth } from '@/features/auth';
 
 interface TopNavigationProps {
   onMenuClick: () => void;
 }
 
 export function TopNavigation({ onMenuClick }: TopNavigationProps) {
+  const navigate = useNavigate();
+  const { logout, profile } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface/95 px-4 py-3 backdrop-blur sm:px-6 lg:px-8">
       <div className="flex min-h-14 items-center justify-between gap-4">
@@ -29,8 +40,8 @@ export function TopNavigation({ onMenuClick }: TopNavigationProps) {
             <p className="text-sm text-muted">Internal management system</p>
           </div>
         </div>
-        <div className="flex items-center gap-2" aria-label="Reserved toolbar">
-          {[Bell, Moon, UserCircle].map((Icon, index) => (
+        <div className="flex items-center gap-2" aria-label="User toolbar">
+          {[Bell, Moon].map((Icon, index) => (
             <button
               key={Icon.displayName ?? index}
               type="button"
@@ -40,6 +51,23 @@ export function TopNavigation({ onMenuClick }: TopNavigationProps) {
               <Icon aria-hidden="true" className="size-5" />
             </button>
           ))}
+          <div className="hidden min-w-0 items-center gap-3 rounded-xl border border-border px-3 py-2 sm:flex">
+            <UserCircle aria-hidden="true" className="size-5 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text">
+                {profile?.full_name ?? 'Authenticated User'}
+              </p>
+              <p className="text-xs capitalize text-muted">{profile?.role ?? 'staff'}</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<LogOut aria-hidden="true" className="size-4" />}
+            onClick={handleLogout}
+          >
+            Logout
+          </Button>
         </div>
       </div>
     </header>
