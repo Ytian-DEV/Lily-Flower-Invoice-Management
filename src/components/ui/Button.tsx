@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { Spinner } from '@/components/ui/Spinner';
+import { componentStyles } from '@/design-system';
 import { cn } from '@/utils/cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
@@ -21,7 +22,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   outline:
     'border border-border bg-surface text-text hover:bg-accent hover:text-primary-dark',
   ghost: 'text-muted hover:bg-accent hover:text-primary-dark',
-  danger: 'bg-red-600 text-white hover:bg-red-700 shadow-soft',
+  danger: 'bg-danger text-white hover:bg-danger-text shadow-soft',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -47,7 +48,8 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60',
+        componentStyles.buttonBase,
+        componentStyles.focusRing,
         variantClasses[variant],
         sizeClasses[size],
         fullWidth && 'w-full',
