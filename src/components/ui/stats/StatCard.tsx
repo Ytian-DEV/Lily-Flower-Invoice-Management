@@ -62,7 +62,7 @@ export function StatCard({
           <p
             className={cn(
               'mt-3 inline-flex items-center gap-1 text-sm font-semibold',
-              trend === 'down' ? 'text-red-700' : 'text-green-700',
+              trend === 'down' ? 'text-danger-text' : 'text-success-text',
             )}
           >
             <TrendIcon aria-hidden="true" className="size-4" />

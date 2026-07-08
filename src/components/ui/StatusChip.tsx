@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from 'react';
 
 import { cn } from '@/utils/cn';
+import { statusToneClasses } from '@/design-system';
 
 export type StatusChipStatus =
   | 'pending'
@@ -38,52 +39,52 @@ interface StatusConfig {
 const statusConfig: Record<StatusChipStatus, StatusConfig> = {
   pending: {
     label: 'Pending',
-    className: 'bg-amber-50 text-amber-700 ring-amber-200',
+    className: statusToneClasses.pending,
     icon: Clock,
   },
   confirmed: {
     label: 'Confirmed',
-    className: 'bg-accent text-primary-dark ring-border',
+    className: statusToneClasses.confirmed,
     icon: CheckCircle2,
   },
   preparing: {
     label: 'Preparing',
-    className: 'bg-pink-50 text-primary-dark ring-border',
+    className: statusToneClasses.preparing,
     icon: PackageCheck,
   },
   ready: {
     label: 'Ready',
-    className: 'bg-green-50 text-green-700 ring-green-200',
+    className: statusToneClasses.ready,
     icon: CheckCircle2,
   },
   'out-for-delivery': {
     label: 'Out for Delivery',
-    className: 'bg-blue-50 text-blue-700 ring-blue-200',
+    className: statusToneClasses.outForDelivery,
     icon: Truck,
   },
   completed: {
     label: 'Completed',
-    className: 'bg-green-50 text-green-700 ring-green-200',
+    className: statusToneClasses.completed,
     icon: CheckCircle2,
   },
   cancelled: {
     label: 'Cancelled',
-    className: 'bg-red-50 text-red-700 ring-red-200',
+    className: statusToneClasses.cancelled,
     icon: XCircle,
   },
   paid: {
     label: 'Paid',
-    className: 'bg-green-50 text-green-700 ring-green-200',
+    className: statusToneClasses.paid,
     icon: CreditCard,
   },
   'partially-paid': {
     label: 'Partially Paid',
-    className: 'bg-amber-50 text-amber-700 ring-amber-200',
+    className: statusToneClasses.partiallyPaid,
     icon: CreditCard,
   },
   unpaid: {
     label: 'Unpaid',
-    className: 'bg-red-50 text-red-700 ring-red-200',
+    className: statusToneClasses.unpaid,
     icon: CreditCard,
   },
 };

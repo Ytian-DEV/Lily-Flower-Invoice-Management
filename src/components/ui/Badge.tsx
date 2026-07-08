@@ -1,5 +1,6 @@
 import type { HTMLAttributes } from 'react';
 
+import { feedbackToneClasses } from '@/design-system';
 import { cn } from '@/utils/cn';
 
 export type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
@@ -9,9 +10,9 @@ export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
-  success: 'bg-green-50 text-green-700 ring-green-200',
-  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
-  danger: 'bg-red-50 text-red-700 ring-red-200',
+  success: feedbackToneClasses.success,
+  warning: feedbackToneClasses.warning,
+  danger: feedbackToneClasses.danger,
   info: 'bg-accent text-primary-dark ring-border',
   neutral: 'bg-surface text-muted ring-border',
 };

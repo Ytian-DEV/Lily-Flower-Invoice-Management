@@ -2,6 +2,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
 import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/Button';
+import { feedbackToneClasses } from '@/design-system';
 import { cn } from '@/utils/cn';
 
 export type AlertVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
@@ -17,9 +18,9 @@ export interface AlertProps {
 }
 
 const variantClasses: Record<AlertVariant, string> = {
-  success: 'border-green-200 bg-green-50 text-green-800',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  error: 'border-red-200 bg-red-50 text-red-800',
+  success: feedbackToneClasses.success,
+  warning: feedbackToneClasses.warning,
+  error: feedbackToneClasses.error,
   info: 'border-border bg-accent text-primary-dark',
   neutral: 'border-border bg-surface text-text',
 };
