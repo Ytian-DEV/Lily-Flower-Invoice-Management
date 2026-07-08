@@ -120,6 +120,7 @@ export interface Database {
           addon_name: string;
           price: number;
           availability: ProductAvailability;
+          description: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -128,6 +129,7 @@ export interface Database {
           addon_name: string;
           price: number;
           availability?: ProductAvailability;
+          description?: string | null;
           created_at?: string;
           updated_at?: string;
         };
