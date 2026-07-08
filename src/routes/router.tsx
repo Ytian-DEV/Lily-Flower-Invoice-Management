@@ -14,11 +14,21 @@ const LoginPage = lazy(() =>
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 );
-const NewInvoicePage = lazy(() =>
-  import('@/pages/NewInvoicePage').then((module) => ({ default: module.NewInvoicePage })),
+const OrdersPage = lazy(() =>
+  import('@/pages/OrdersPage').then((module) => ({ default: module.OrdersPage })),
 );
-const InvoicesPage = lazy(() =>
-  import('@/pages/InvoicesPage').then((module) => ({ default: module.InvoicesPage })),
+const OrderFormPage = lazy(() =>
+  import('@/pages/OrderFormPage').then((module) => ({ default: module.OrderFormPage })),
+);
+const OrderDetailPage = lazy(() =>
+  import('@/pages/OrderDetailPage').then((module) => ({
+    default: module.OrderDetailPage,
+  })),
+);
+const OrderPreviewPage = lazy(() =>
+  import('@/pages/OrderPreviewPage').then((module) => ({
+    default: module.OrderPreviewPage,
+  })),
 );
 const InvoiceHistoryPage = lazy(() =>
   import('@/pages/InvoiceHistoryPage').then((module) => ({
@@ -67,8 +77,13 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: withSuspense(<DashboardPage />) },
-          { path: 'invoices', element: withSuspense(<InvoicesPage />) },
-          { path: 'invoices/new', element: withSuspense(<NewInvoicePage />) },
+          { path: 'orders', element: withSuspense(<OrdersPage />) },
+          { path: 'orders/new', element: withSuspense(<OrderFormPage />) },
+          { path: 'orders/:id', element: withSuspense(<OrderDetailPage />) },
+          { path: 'orders/:id/edit', element: withSuspense(<OrderFormPage />) },
+          { path: 'orders/:id/preview', element: withSuspense(<OrderPreviewPage />) },
+          { path: 'invoices', element: <Navigate to="/orders" replace /> },
+          { path: 'invoices/new', element: <Navigate to="/orders/new" replace /> },
           { path: 'invoices/history', element: <Navigate to="/history" replace /> },
           { path: 'history', element: withSuspense(<InvoiceHistoryPage />) },
           { path: 'customers', element: withSuspense(<CustomersPage />) },
