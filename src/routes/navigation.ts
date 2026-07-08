@@ -2,6 +2,7 @@ import {
   CreditCard,
   FileClock,
   FilePlus2,
+  FileText,
   LayoutDashboard,
   Package,
   Settings,
@@ -18,6 +19,7 @@ export interface NavigationItem {
 
 export const navigationItems: NavigationItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, end: true },
+  { label: 'Orders', path: '/orders', icon: FileText },
   { label: 'New Invoice', path: '/invoices/new', icon: FilePlus2 },
   { label: 'Invoice History', path: '/history', icon: FileClock },
   { label: 'Customers', path: '/customers', icon: Users },

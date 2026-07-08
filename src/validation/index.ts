@@ -20,6 +20,8 @@ export { paymentReceiptSchema, paymentSchema } from '@/validation/payments';
 export type { PaymentFormValues, PaymentReceiptFormValues } from '@/validation/payments';
 export { settingsSchema } from '@/validation/settings';
 export type { SettingsFormValues } from '@/validation/settings';
+export { orderFormSchema } from '@/validation/orders';
+export type { OrderValidatedValues } from '@/validation/orders';
 export {
   invoiceStatusSchema,
   paymentMethodSchema,
