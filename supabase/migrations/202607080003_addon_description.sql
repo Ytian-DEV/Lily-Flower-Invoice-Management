@@ -1,0 +1,2 @@
+alter table public.addons
+add column if not exists description text;

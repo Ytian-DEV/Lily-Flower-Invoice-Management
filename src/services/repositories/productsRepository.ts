@@ -1,5 +1,13 @@
 import { supabase } from '@/lib/supabase';
-import type { TableInsert, TableUpdate } from '@/types/database';
+import type { ProductAvailability, TableInsert, TableUpdate } from '@/types/database';
+
+export interface ProductCatalogQuery {
+  search?: string;
+  categoryId?: string;
+  availability?: ProductAvailability;
+  page?: number;
+  pageSize?: number;
+}
 
 export const productCategoriesRepository = {
   list() {
@@ -53,5 +61,34 @@ export const productsRepository = {
       .select('*')
       .ilike('product_name', `%${query}%`)
       .order('product_name', { ascending: true });
+  },
+  query({
+    availability,
+    categoryId,
+    page = 1,
+    pageSize = 10,
+    search,
+  }: ProductCatalogQuery) {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    let request = supabase
+      .from('products')
+      .select('*', { count: 'exact' })
+      .order('product_name', { ascending: true })
+      .range(from, to);
+
+    if (search) {
+      request = request.ilike('product_name', `%${search}%`);
+    }
+
+    if (categoryId) {
+      request = request.eq('category_id', categoryId);
+    }
+
+    if (availability) {
+      request = request.eq('availability', availability);
+    }
+
+    return request;
   },
 };
