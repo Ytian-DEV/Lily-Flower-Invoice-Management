@@ -1,13 +1,31 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter } from 'react-router';
 
-import { LoadingPage } from '@/pages/LoadingPage';
 import { AppLayout } from '@/layouts/AppLayout';
+import { LoadingPage } from '@/pages/LoadingPage';
 
-const PlaceholderPage = lazy(() =>
-  import('@/pages/PlaceholderPage').then((module) => ({
-    default: module.PlaceholderPage,
+const DashboardPage = lazy(() =>
+  import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
+);
+const NewInvoicePage = lazy(() =>
+  import('@/pages/NewInvoicePage').then((module) => ({ default: module.NewInvoicePage })),
+);
+const InvoiceHistoryPage = lazy(() =>
+  import('@/pages/InvoiceHistoryPage').then((module) => ({
+    default: module.InvoiceHistoryPage,
   })),
+);
+const CustomersPage = lazy(() =>
+  import('@/pages/CustomersPage').then((module) => ({ default: module.CustomersPage })),
+);
+const ProductsPage = lazy(() =>
+  import('@/pages/ProductsPage').then((module) => ({ default: module.ProductsPage })),
+);
+const PaymentsPage = lazy(() =>
+  import('@/pages/PaymentsPage').then((module) => ({ default: module.PaymentsPage })),
+);
+const SettingsPage = lazy(() =>
+  import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
 );
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFoundPage').then((module) => ({
@@ -30,34 +48,30 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     errorElement: withSuspense(<ErrorPage />),
     children: [
-      { index: true, element: withSuspense(<PlaceholderPage title="Home" />) },
+      { index: true, element: withSuspense(<DashboardPage />) },
       {
-        path: 'dashboard',
-        element: withSuspense(<PlaceholderPage title="Dashboard" />),
+        path: 'invoices/new',
+        element: withSuspense(<NewInvoicePage />),
       },
       {
-        path: 'invoices',
-        element: withSuspense(<PlaceholderPage title="Invoices" />),
+        path: 'invoices/history',
+        element: withSuspense(<InvoiceHistoryPage />),
       },
       {
         path: 'customers',
-        element: withSuspense(<PlaceholderPage title="Customers" />),
+        element: withSuspense(<CustomersPage />),
       },
       {
         path: 'products',
-        element: withSuspense(<PlaceholderPage title="Products" />),
+        element: withSuspense(<ProductsPage />),
       },
       {
         path: 'payments',
-        element: withSuspense(<PlaceholderPage title="Payments" />),
+        element: withSuspense(<PaymentsPage />),
       },
       {
         path: 'settings',
-        element: withSuspense(<PlaceholderPage title="Settings" />),
-      },
-      {
-        path: 'preview',
-        element: withSuspense(<PlaceholderPage title="Invoice Preview" />),
+        element: withSuspense(<SettingsPage />),
       },
       { path: '*', element: withSuspense(<NotFoundPage />) },
     ],
