@@ -194,7 +194,7 @@ export function OrderFormPage() {
     const result = await invoicesRepository.createOrder(
       {
         invoice_number: invoiceNumberResult.invoiceNumber,
-        customer_id: values.customerId,
+        customer_id: parsed.data.customerId,
         subtotal: pricing.subtotal,
         discount_percent: pricing.discountPercent,
         discount_amount: pricing.discountAmount,

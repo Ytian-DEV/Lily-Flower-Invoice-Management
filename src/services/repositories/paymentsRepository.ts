@@ -2,6 +2,13 @@ import { supabase } from '@/lib/supabase';
 import type { TableInsert, TableUpdate } from '@/types/database';
 
 export const paymentReceiptsRepository = {
+  getByPaymentId(paymentId: string) {
+    return supabase
+      .from('payment_receipts')
+      .select('*')
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+  },
   create(payload: TableInsert<'payment_receipts'>) {
     return supabase.from('payment_receipts').insert(payload).select('*').single();
   },
@@ -12,6 +19,9 @@ export const paymentReceiptsRepository = {
       .eq('id', id)
       .select('*')
       .single();
+  },
+  remove(id: string) {
+    return supabase.from('payment_receipts').delete().eq('id', id);
   },
 };
 
