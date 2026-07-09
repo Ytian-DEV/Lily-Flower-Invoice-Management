@@ -1,75 +1,120 @@
 import { useNavigate } from 'react-router';
 
 import { PageContainer } from '@/components/layout/PageContainer';
-import { KeyValueDisplay, Timeline } from '@/components/ui';
+import { EmptyState, ErrorState, KeyValueDisplay, Skeleton } from '@/components/ui';
 import {
+  DashboardCharts,
   DashboardHeader,
   DashboardListCard,
   QuickActions,
   RecentInvoicesTable,
   StatsGrid,
+  useDashboardAnalytics,
 } from '@/features/dashboard';
-import {
-  pendingPayments,
-  recentActivity,
-  systemOverview,
-  upcomingDeliveries,
-} from '@/mocks/dashboard';
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { data, error, isLoading, refresh } = useDashboardAnalytics();
+
+  if (error && !data) {
+    return (
+      <PageContainer>
+        <ErrorState
+          title="Dashboard analytics could not load"
+          description={error}
+          onRetry={refresh}
+        />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
       <div className="space-y-8">
         <DashboardHeader onActionClick={navigate} />
         <QuickActions />
-        <StatsGrid />
+        <StatsGrid stats={data?.stats} isLoading={isLoading} />
+        {error ? (
+          <ErrorState title="Live refresh failed" description={error} onRetry={refresh} />
+        ) : null}
+        <DashboardListCard
+          title="Analytics"
+          description="Live order, revenue, product, and payment performance."
+        >
+          {isLoading && !data ? (
+            <div className="grid gap-6 xl:grid-cols-2">
+              {Array.from({ length: 4 }, (_, index) => (
+                <Skeleton key={index} className="h-52" />
+              ))}
+            </div>
+          ) : data ? (
+            <DashboardCharts
+              revenueThisMonth={data.revenueThisMonth}
+              ordersByStatus={data.ordersByStatus}
+              topSellingProducts={data.topSellingProducts}
+              monthlySalesTrend={data.monthlySalesTrend}
+            />
+          ) : null}
+        </DashboardListCard>
         <div className="grid gap-6 xl:grid-cols-2">
           <DashboardListCard
-            title="Recent Activity"
-            description="Prepared for invoice, payment, and status events."
+            title="Recent Orders"
+            description="Latest invoices created in the system."
           >
-            <Timeline
-              items={recentActivity.map((item) => ({
-                id: item.id,
-                date: item.date,
-                title: item.title,
-                description: item.description,
-              }))}
-            />
+            {data?.recentOrders.length ? (
+              <RecentInvoicesTable
+                invoices={data.recentOrders}
+                onViewInvoice={(invoiceId) => navigate(`/orders/${invoiceId}`)}
+              />
+            ) : (
+              <EmptyState
+                title="No recent orders"
+                description="New invoices will appear here once orders are created."
+              />
+            )}
           </DashboardListCard>
           <DashboardListCard
-            title="System Overview"
-            description="High-level system readiness placeholders."
+            title="Recent Payments"
+            description="Latest payments received from customers."
           >
-            <KeyValueDisplay items={systemOverview} columns={2} />
+            {data?.recentPayments.length ? (
+              <KeyValueDisplay items={data.recentPayments} />
+            ) : (
+              <EmptyState
+                title="No recent payments"
+                description="Payments will appear here once recorded."
+              />
+            )}
           </DashboardListCard>
         </div>
         <div className="grid gap-6 xl:grid-cols-2">
           <DashboardListCard
             title="Pending Payments"
-            description="Payment reminders will appear here later."
+            description="Invoices with outstanding balances."
           >
-            <KeyValueDisplay
-              items={pendingPayments.map(({ label, value }) => ({ label, value }))}
-            />
+            {data?.pendingPayments.length ? (
+              <KeyValueDisplay items={data.pendingPayments} />
+            ) : (
+              <EmptyState
+                title="No pending payments"
+                description="Outstanding balances are clear."
+              />
+            )}
           </DashboardListCard>
           <DashboardListCard
             title="Upcoming Deliveries"
-            description="Delivery schedule will appear here later."
+            description="Scheduled deliveries in the next seven days."
           >
-            <KeyValueDisplay
-              items={upcomingDeliveries.map(({ label, value }) => ({ label, value }))}
-            />
+            {data?.upcomingDeliveries.length ? (
+              <KeyValueDisplay items={data.upcomingDeliveries} />
+            ) : (
+              <EmptyState
+                title="No upcoming deliveries"
+                description="Scheduled deliveries will appear here."
+              />
+            )}
           </DashboardListCard>
         </div>
-        <DashboardListCard
-          title="Recent Invoices"
-          description="This table is wired to placeholder data and ready for Supabase queries."
-        >
-          <RecentInvoicesTable />
-        </DashboardListCard>
       </div>
     </PageContainer>
   );
