@@ -14,7 +14,10 @@ const orderLineSchema = z.object({
 });
 
 export const orderFormSchema = z.object({
-  customerId: z.string().uuid(),
+  customerId: z.preprocess(
+    (value) => (value === '' ? null : value),
+    z.string().uuid().nullable(),
+  ),
   customerName: z.string().trim().min(1),
   phoneNumber: z.string().trim().min(7),
   deliveryAddress: z.string().trim().min(1),
