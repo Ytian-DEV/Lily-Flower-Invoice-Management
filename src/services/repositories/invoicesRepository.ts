@@ -35,6 +35,12 @@ export const invoicesRepository = {
       .select('*')
       .order('created_at', { ascending: false });
   },
+  listWithCustomers() {
+    return supabase
+      .from('invoices')
+      .select('*, customers(full_name, phone_number)')
+      .order('created_at', { ascending: false });
+  },
   getById(id: string) {
     return supabase.from('invoices').select('*').eq('id', id).single();
   },
@@ -45,6 +51,28 @@ export const invoicesRepository = {
     return supabase.from('invoices').update(payload).eq('id', id).select('*').single();
   },
   remove(id: string) {
+    return supabase.from('invoices').delete().eq('id', id);
+  },
+  async removeIfAllowed(id: string) {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('remaining_balance,total_amount')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    if (data.remaining_balance <= 0 && data.total_amount > 0) {
+      return {
+        data: null,
+        error: {
+          message: 'Paid invoices cannot be deleted by default.',
+        },
+      };
+    }
+
     return supabase.from('invoices').delete().eq('id', id);
   },
   getByInvoiceNumber(invoiceNumber: string) {

@@ -9,6 +9,20 @@ export const settingsRepository = {
     return supabase.from('settings').update(payload).eq('id', id).select('*').single();
   },
   getActive() {
-    return supabase.from('settings').select('*').order('created_at').limit(1).single();
+    return supabase
+      .from('settings')
+      .select('*')
+      .order('created_at')
+      .limit(1)
+      .maybeSingle();
+  },
+  async upsertActive(payload: TableInsert<'settings'>) {
+    const { data } = await this.getActive();
+
+    if (data) {
+      return this.update(data.id, payload);
+    }
+
+    return this.create(payload);
   },
 };

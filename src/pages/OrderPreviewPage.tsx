@@ -10,6 +10,7 @@ import {
   LoadingScreen,
   StatusChip,
 } from '@/components/ui';
+import { LogoPlaceholder } from '@/components/layout/LogoPlaceholder';
 import { CrudPageContainer } from '@/features/crud';
 import type { Order } from '@/features/orders';
 import {
@@ -79,9 +80,7 @@ export function OrderPreviewPage() {
             <div className="mx-auto max-w-4xl space-y-8 rounded-lg border border-slate-200 p-8 print:border-0">
               <div className="flex flex-wrap items-start justify-between gap-6 border-b border-slate-200 pb-6">
                 <div>
-                  <p className="text-sm font-bold uppercase tracking-wide text-primary-dark">
-                    Lily Flowers
-                  </p>
+                  <LogoPlaceholder />
                   <h2 className="mt-2 text-3xl font-bold text-slate-950">
                     {order.invoice_number}
                   </h2>
