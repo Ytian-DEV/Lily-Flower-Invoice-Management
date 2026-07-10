@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { addonsRepository } from '@/services/repositories/addonsRepository';
 import {
+  colorsRepository,
   productCategoriesRepository,
   productsRepository,
 } from '@/services/repositories/productsRepository';
 import type { ProductAvailability } from '@/types/database';
 import type {
   Addon,
+  Color,
   Product,
   ProductCategory,
   ProductViewModel,
@@ -26,6 +28,7 @@ const defaultFilters: CatalogFilters = {
 export function useProductCatalog() {
   const [products, setProducts] = useState<Product[]>([]);
   const [addons, setAddons] = useState<Addon[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,13 +40,20 @@ export function useProductCatalog() {
     setIsLoading(true);
     setErrorMessage('');
 
-    const [productsResult, addonsResult, categoriesResult] = await Promise.all([
-      productsRepository.list(),
-      addonsRepository.list(),
-      productCategoriesRepository.list(),
-    ]);
+    const [productsResult, addonsResult, categoriesResult, colorsResult] =
+      await Promise.all([
+        productsRepository.list(),
+        addonsRepository.list(),
+        productCategoriesRepository.list(),
+        colorsRepository.list(),
+      ]);
 
-    if (productsResult.error || addonsResult.error || categoriesResult.error) {
+    if (
+      productsResult.error ||
+      addonsResult.error ||
+      categoriesResult.error ||
+      colorsResult.error
+    ) {
       setErrorMessage('Unable to load product catalog. Please try again.');
       setIsLoading(false);
       return;
@@ -52,6 +62,7 @@ export function useProductCatalog() {
     setProducts(productsResult.data ?? []);
     setAddons(addonsResult.data ?? []);
     setCategories(categoriesResult.data ?? []);
+    setColors(colorsResult.data ?? []);
     setIsLoading(false);
   }, []);
 
@@ -70,12 +81,27 @@ export function useProductCatalog() {
       categories.map((category) => [category.id, category.name]),
     );
 
-    return products.map((product) => ({
-      ...product,
-      categoryName: product.category_id
-        ? (categoryMap.get(product.category_id) ?? 'Uncategorized')
-        : 'Uncategorized',
-    }));
+    return products.map((product) => {
+      const productColors =
+        'product_colors' in product && Array.isArray(product.product_colors)
+          ? product.product_colors
+              .map((item) =>
+                item && typeof item === 'object' && 'colors' in item
+                  ? (item.colors as Color | null)
+                  : null,
+              )
+              .filter((color): color is Color => Boolean(color))
+          : [];
+
+      return {
+        ...product,
+        categoryName: product.category_id
+          ? (categoryMap.get(product.category_id) ?? 'Uncategorized')
+          : 'Uncategorized',
+        colors: productColors,
+        colorIds: productColors.map((color) => color.id),
+      };
+    });
   }, [categories, products]);
 
   const filteredProducts = useMemo(() => {
@@ -109,9 +135,40 @@ export function useProductCatalog() {
     });
   }, [addons, filters.availability, searchQuery]);
 
+  const filteredColors = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return colors.filter((color) => {
+      const matchesSearch =
+        normalizedQuery.length === 0 ||
+        color.color_name.toLowerCase().includes(normalizedQuery) ||
+        color.hex_color.toLowerCase().includes(normalizedQuery);
+      const matchesAvailability =
+        filters.availability === 'all' || color.availability === filters.availability;
+
+      return matchesSearch && matchesAvailability;
+    });
+  }, [colors, filters.availability, searchQuery]);
+
+  const filteredCategories = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return categories.filter((category) => {
+      const matchesSearch =
+        normalizedQuery.length === 0 ||
+        category.name.toLowerCase().includes(normalizedQuery) ||
+        (category.description ?? '').toLowerCase().includes(normalizedQuery);
+      const matchesAvailability =
+        filters.availability === 'all' || category.availability === filters.availability;
+
+      return matchesSearch && matchesAvailability;
+    });
+  }, [categories, filters.availability, searchQuery]);
+
   return {
     addons: filteredAddons,
-    categories,
+    categories: filteredCategories,
+    colors: filteredColors,
     errorMessage,
     filters,
     isLoading,

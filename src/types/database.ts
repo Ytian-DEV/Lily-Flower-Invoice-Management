@@ -67,6 +67,7 @@ export interface Database {
           id: string;
           name: string;
           description: string | null;
+          availability: ProductAvailability;
           sort_order: number;
           created_at: string;
         };
@@ -74,10 +75,33 @@ export interface Database {
           id?: string;
           name: string;
           description?: string | null;
+          availability?: ProductAvailability;
           sort_order?: number;
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['product_categories']['Insert']>;
+        Relationships: [];
+      };
+      colors: {
+        Row: {
+          id: string;
+          color_name: string;
+          hex_color: string;
+          availability: ProductAvailability;
+          description: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          color_name: string;
+          hex_color: string;
+          availability?: ProductAvailability;
+          description?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['colors']['Insert']>;
         Relationships: [];
       };
       products: {
@@ -110,6 +134,35 @@ export interface Database {
             columns: ['category_id'];
             isOneToOne: false;
             referencedRelation: 'product_categories';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      product_colors: {
+        Row: {
+          product_id: string;
+          color_id: string;
+          created_at: string;
+        };
+        Insert: {
+          product_id: string;
+          color_id: string;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['product_colors']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'product_colors_product_id_fkey';
+            columns: ['product_id'];
+            isOneToOne: false;
+            referencedRelation: 'products';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'product_colors_color_id_fkey';
+            columns: ['color_id'];
+            isOneToOne: false;
+            referencedRelation: 'colors';
             referencedColumns: ['id'];
           },
         ];
@@ -196,6 +249,9 @@ export interface Database {
           quantity: number;
           unit_price: number;
           total_price: number;
+          color_id: string | null;
+          color_name: string | null;
+          custom_color_name: string | null;
           created_at: string;
         };
         Insert: {
@@ -205,6 +261,9 @@ export interface Database {
           quantity: number;
           unit_price: number;
           total_price: number;
+          color_id?: string | null;
+          color_name?: string | null;
+          custom_color_name?: string | null;
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['invoice_items']['Insert']>;

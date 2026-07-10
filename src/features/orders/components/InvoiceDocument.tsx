@@ -73,6 +73,10 @@ function InvoiceDetail({ label, value }: { label: string; value: string | number
   );
 }
 
+function invoiceItemColor(item: InvoiceItemWithProduct) {
+  return item.custom_color_name || item.color_name || 'Not selected';
+}
+
 export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
   function InvoiceDocument(
     { addons = [], customer, items = [], order, payments = [], settings },
@@ -221,6 +225,9 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                     {item.products?.product_name ?? 'Bouquet'}
                     <div className="mt-1 text-xs text-slate-500">
                       {item.quantity} x {formatOrderCurrency(item.unit_price)}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Color: {invoiceItemColor(item)}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right">

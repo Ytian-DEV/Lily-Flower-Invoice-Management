@@ -31,6 +31,8 @@ import { invoicesRepository } from '@/services/repositories/invoicesRepository';
 import { uploadReceipt } from '@/services/storage';
 import { orderFormSchema } from '@/validation/orders';
 
+const customColorValue = '__custom__';
+
 const defaultValues: OrderFormValues = {
   customerId: '',
   customerName: '',
@@ -120,8 +122,60 @@ export function OrderFormPage() {
         quantity: 1,
         unitPrice: product.base_price,
         totalPrice: product.base_price,
+        colorId: null,
+        colorName: '',
+        customColorName: null,
+        isCustomColor: false,
       },
     ]);
+  };
+
+  const updateProductColor = (lineId: string, colorValue: string) => {
+    setSelectedProducts((current) =>
+      current.map((item) => {
+        if (item.id !== lineId) {
+          return item;
+        }
+
+        if (colorValue === customColorValue) {
+          return {
+            ...item,
+            colorId: null,
+            colorName: item.customColorName ?? '',
+            customColorName: item.customColorName ?? '',
+            isCustomColor: true,
+          };
+        }
+
+        const product = products.find((productItem) => productItem.id === item.productId);
+        const color = product?.colors.find(
+          (productColor) => productColor.id === colorValue,
+        );
+
+        return {
+          ...item,
+          colorId: color?.id ?? null,
+          colorName: color?.color_name ?? '',
+          customColorName: null,
+          isCustomColor: false,
+        };
+      }),
+    );
+  };
+
+  const updateCustomColor = (lineId: string, customColorName: string) => {
+    setSelectedProducts((current) =>
+      current.map((item) =>
+        item.id === lineId
+          ? {
+              ...item,
+              colorName: customColorName.trim(),
+              customColorName,
+              isCustomColor: true,
+            }
+          : item,
+      ),
+    );
   };
 
   const addAddon = (addonId: string, quantity = 1) => {
@@ -326,9 +380,56 @@ export function OrderFormPage() {
               <KeyValueDisplay
                 items={selectedProducts.map((item) => ({
                   label: item.productName,
-                  value: `${item.quantity} x ${formatOrderCurrency(item.unitPrice)} = ${formatOrderCurrency(item.totalPrice)}`,
+                  value: `${item.quantity} x ${formatOrderCurrency(item.unitPrice)} = ${formatOrderCurrency(item.totalPrice)} · Color: ${item.colorName || 'Not selected'}`,
                 }))}
               />
+              <div className="grid gap-4">
+                {selectedProducts.map((item) => {
+                  const product = products.find(
+                    (productItem) => productItem.id === item.productId,
+                  );
+                  const selectedValue = item.isCustomColor
+                    ? customColorValue
+                    : (item.colorId ?? '');
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-2"
+                    >
+                      <Select
+                        label={`${item.productName} Bouquet Color`}
+                        required
+                        isSearchReady
+                        value={selectedValue}
+                        onChange={(event) =>
+                          updateProductColor(item.id, event.target.value)
+                        }
+                        options={[
+                          { label: 'Select bouquet color', value: '' },
+                          ...(product?.colors ?? [])
+                            .filter((color) => color.availability === 'available')
+                            .map((color) => ({
+                              label: color.color_name,
+                              value: color.id,
+                            })),
+                          { label: 'Custom Color', value: customColorValue },
+                        ]}
+                      />
+                      {item.isCustomColor ? (
+                        <Input
+                          label="Custom Color Name"
+                          required
+                          value={item.customColorName ?? ''}
+                          onChange={(event) =>
+                            updateCustomColor(item.id, event.target.value)
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </CardBody>
           </Card>
 

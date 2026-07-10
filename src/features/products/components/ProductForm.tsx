@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
-import { Button, Input, Select, TextArea } from '@/components/ui';
+import { Button, Checkbox, Input, Select, TextArea } from '@/components/ui';
 import { CrudFormLayout, FormFooter } from '@/features/crud';
-import type { Product, ProductCategory } from '@/features/products/types';
+import type { Color, ProductCategory, ProductViewModel } from '@/features/products/types';
 import { productSchema, type ProductFormValues } from '@/validation';
 
 interface ProductFormProps {
   categories: ProductCategory[];
-  product?: Product | null;
+  colors: Color[];
+  product?: ProductViewModel | null;
   isSubmitting?: boolean;
   onCancel: () => void;
   onSubmit: (values: ProductFormValues) => Promise<void>;
@@ -16,6 +17,7 @@ interface ProductFormProps {
 
 export function ProductForm({
   categories,
+  colors,
   isSubmitting = false,
   onCancel,
   onSubmit,
@@ -30,6 +32,7 @@ export function ProductForm({
       base_price: 0,
       availability: 'available',
       description: '',
+      colorIds: [],
     },
   });
 
@@ -41,6 +44,7 @@ export function ProductForm({
       base_price: product?.base_price ?? 0,
       availability: product?.availability ?? 'available',
       description: product?.description ?? '',
+      colorIds: product?.colorIds ?? [],
     });
   }, [product, reset]);
 
@@ -112,6 +116,21 @@ export function ProductForm({
         ]}
         {...register('availability')}
       />
+      <div className="md:col-span-2">
+        <div className="grid gap-3">
+          <p className="text-sm font-semibold text-text">Available Colors</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {colors.map((color) => (
+              <Checkbox
+                key={color.id}
+                label={color.color_name}
+                value={color.id}
+                {...register('colorIds')}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="md:col-span-2">
         <TextArea label="Description" rows={4} {...register('description')} />
       </div>

@@ -9,11 +9,13 @@ import {
   formatOrderDate,
 } from '@/features/orders/utils/orderFormatters';
 import { invoicesRepository } from '@/services/repositories/invoicesRepository';
+import type { InvoiceItemWithProduct } from '@/services/repositories/invoicesRepository';
 
 export function OrderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState<Order | null>(null);
+  const [items, setItems] = useState<InvoiceItemWithProduct[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -21,8 +23,9 @@ export function OrderDetailPage() {
       return;
     }
 
-    invoicesRepository.getById(id).then(({ data }) => {
-      setOrder(data ?? null);
+    invoicesRepository.getPreviewById(id).then(({ data }) => {
+      setOrder(data?.invoice ?? null);
+      setItems(data?.items ?? []);
       setIsLoading(false);
     });
   }, [id]);
@@ -66,6 +69,16 @@ export function OrderDetailPage() {
             />
           }
           sections={[
+            {
+              title: 'Bouquets',
+              items:
+                items.length > 0
+                  ? items.map((item) => ({
+                      label: item.products?.product_name ?? 'Bouquet',
+                      value: item.custom_color_name || item.color_name || 'No color',
+                    }))
+                  : [{ label: 'Bouquet Color', value: 'No bouquet lines' }],
+            },
             {
               title: 'Order Summary',
               items: [

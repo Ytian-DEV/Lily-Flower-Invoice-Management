@@ -10,6 +10,7 @@ import { invoicesRepository } from '@/services/repositories/invoicesRepository';
 import type { Customer } from '@/features/customers';
 import type {
   Addon,
+  Color,
   Product,
   ProductCategory,
   ProductViewModel,
@@ -72,12 +73,27 @@ export function useOrderData() {
       categories.map((category) => [category.id, category.name]),
     );
 
-    return products.map((product) => ({
-      ...product,
-      categoryName: product.category_id
-        ? (categoryMap.get(product.category_id) ?? 'Uncategorized')
-        : 'Uncategorized',
-    }));
+    return products.map((product) => {
+      const productColors =
+        'product_colors' in product && Array.isArray(product.product_colors)
+          ? product.product_colors
+              .map((item) =>
+                item && typeof item === 'object' && 'colors' in item
+                  ? (item.colors as Color | null)
+                  : null,
+              )
+              .filter((color): color is Color => Boolean(color))
+          : [];
+
+      return {
+        ...product,
+        categoryName: product.category_id
+          ? (categoryMap.get(product.category_id) ?? 'Uncategorized')
+          : 'Uncategorized',
+        colors: productColors,
+        colorIds: productColors.map((color) => color.id),
+      };
+    });
   }, [categories, products]);
 
   return {
