@@ -59,6 +59,7 @@ create table public.invoices (
   id uuid primary key default gen_random_uuid(),
   invoice_number text not null unique,
   customer_id uuid references public.customers(id) on delete set null,
+  customer_name text not null default 'Walk-in customer',
   subtotal numeric(12, 2) not null default 0 check (subtotal >= 0),
   discount_percent numeric(5, 2) not null default 0 check (discount_percent >= 0),
   discount_amount numeric(12, 2) not null default 0 check (discount_amount >= 0),

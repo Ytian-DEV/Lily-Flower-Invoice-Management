@@ -195,6 +195,7 @@ export function OrderFormPage() {
       {
         invoice_number: invoiceNumberResult.invoiceNumber,
         customer_id: parsed.data.customerId,
+        customer_name: parsed.data.customerName,
         subtotal: pricing.subtotal,
         discount_percent: pricing.discountPercent,
         discount_amount: pricing.discountAmount,
@@ -210,6 +211,13 @@ export function OrderFormPage() {
       },
       selectedProducts,
       selectedAddons,
+      {
+        payment_method: values.paymentMethod,
+        amount: pricing.downpaymentAmount,
+        reference_number:
+          values.paymentMethod === 'cash' ? null : values.referenceNumber.trim() || null,
+        payment_status: pricing.remainingBalance <= 0 ? 'paid' : 'partially_paid',
+      },
     );
 
     if (result.error || !result.data) {

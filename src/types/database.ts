@@ -141,6 +141,7 @@ export interface Database {
           id: string;
           invoice_number: string;
           customer_id: string | null;
+          customer_name: string;
           subtotal: number;
           discount_percent: number;
           discount_amount: number;
@@ -160,6 +161,7 @@ export interface Database {
           id?: string;
           invoice_number: string;
           customer_id?: string | null;
+          customer_name: string;
           subtotal?: number;
           discount_percent?: number;
           discount_amount?: number;
