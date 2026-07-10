@@ -1,13 +1,34 @@
 import { supabase } from '@/lib/supabase';
 import type { OrderAddonItem, OrderProductItem } from '@/features/orders/types';
 import { createInvoiceNumber } from '@/features/orders/utils/invoiceNumber';
-import type { InvoiceStatus, TableInsert, TableUpdate } from '@/types/database';
+import type { InvoiceStatus, TableInsert, TableRow, TableUpdate } from '@/types/database';
 
 export interface InvoiceQuery {
   search?: string;
   status?: InvoiceStatus;
   page?: number;
   pageSize?: number;
+}
+
+export type InvoiceItemWithProduct = TableRow<'invoice_items'> & {
+  products: { product_name: string | null } | null;
+};
+
+export type InvoiceAddonWithAddon = TableRow<'invoice_addons'> & {
+  addons: { addon_name: string | null } | null;
+};
+
+export type InvoicePreviewPayment = Pick<
+  TableRow<'payments'>,
+  'id' | 'payment_method' | 'amount' | 'reference_number' | 'created_at' | 'payment_date'
+>;
+
+export interface InvoicePreviewData {
+  invoice: TableRow<'invoices'>;
+  customer: TableRow<'customers'> | null;
+  items: InvoiceItemWithProduct[];
+  addons: InvoiceAddonWithAddon[];
+  payments: InvoicePreviewPayment[];
 }
 
 export const invoiceItemsRepository = {
@@ -43,6 +64,35 @@ export const invoicesRepository = {
   },
   getById(id: string) {
     return supabase.from('invoices').select('*').eq('id', id).single();
+  },
+  async getPreviewById(id: string) {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select(
+        `
+          *,
+          customers(*),
+          invoice_items(*, products(product_name)),
+          invoice_addons(*, addons(addon_name)),
+          payments(id, payment_method, amount, reference_number, created_at, payment_date)
+        `,
+      )
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      return { data: null, error };
+    }
+
+    const previewData: InvoicePreviewData = {
+      invoice: data,
+      customer: data.customers ?? null,
+      items: data.invoice_items ?? [],
+      addons: data.invoice_addons ?? [],
+      payments: data.payments ?? [],
+    };
+
+    return { data: previewData, error: null };
   },
   create(payload: TableInsert<'invoices'>) {
     return supabase.from('invoices').insert(payload).select('*').single();
@@ -128,6 +178,7 @@ export const invoicesRepository = {
     invoice: TableInsert<'invoices'>,
     products: OrderProductItem[],
     addons: OrderAddonItem[],
+    initialPayment?: Omit<TableInsert<'payments'>, 'invoice_id'>,
   ) {
     const invoiceResult = await supabase
       .from('invoices')
@@ -168,6 +219,17 @@ export const invoicesRepository = {
 
       if (addonResult.error) {
         return { data: null, error: addonResult.error };
+      }
+    }
+
+    if (initialPayment && initialPayment.amount > 0) {
+      const paymentResult = await supabase.from('payments').insert({
+        ...initialPayment,
+        invoice_id: invoiceId,
+      });
+
+      if (paymentResult.error) {
+        return { data: null, error: paymentResult.error };
       }
     }
 

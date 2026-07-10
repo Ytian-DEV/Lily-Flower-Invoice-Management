@@ -1,11 +1,16 @@
 import { useState } from 'react';
 
 interface LogoPlaceholderProps {
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 export function LogoPlaceholder({ size = 'md' }: LogoPlaceholderProps) {
-  const sizeClass = size === 'sm' ? 'size-11 text-[0.48rem]' : 'size-14 text-[0.56rem]';
+  const sizeClass =
+    size === 'sm'
+      ? 'size-11 text-[0.48rem]'
+      : size === 'lg'
+        ? 'size-16 text-[0.62rem]'
+        : 'size-14 text-[0.56rem]';
   const [hasLogoError, setHasLogoError] = useState(false);
 
   if (!hasLogoError) {
