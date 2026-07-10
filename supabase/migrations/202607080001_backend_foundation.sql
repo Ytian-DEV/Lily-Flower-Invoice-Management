@@ -30,8 +30,20 @@ create table public.product_categories (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   description text,
+  availability public.product_availability not null default 'available',
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
+);
+
+create table public.colors (
+  id uuid primary key default gen_random_uuid(),
+  color_name text not null unique,
+  hex_color text not null,
+  availability public.product_availability not null default 'available',
+  description text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint colors_hex_color_check check (hex_color ~ '^#[0-9A-Fa-f]{6}$')
 );
 
 create table public.products (
@@ -44,6 +56,13 @@ create table public.products (
   description text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+create table public.product_colors (
+  product_id uuid not null references public.products(id) on delete cascade,
+  color_id uuid not null references public.colors(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (product_id, color_id)
 );
 
 create table public.addons (
@@ -83,6 +102,9 @@ create table public.invoice_items (
   quantity integer not null check (quantity > 0),
   unit_price numeric(12, 2) not null check (unit_price >= 0),
   total_price numeric(12, 2) not null check (total_price >= 0),
+  color_id uuid references public.colors(id) on delete set null,
+  color_name text,
+  custom_color_name text,
   created_at timestamptz not null default now()
 );
 
@@ -155,13 +177,16 @@ create trigger users_set_updated_at before update on public.users for each row e
 create trigger customers_set_updated_at before update on public.customers for each row execute function public.set_updated_at();
 create trigger products_set_updated_at before update on public.products for each row execute function public.set_updated_at();
 create trigger addons_set_updated_at before update on public.addons for each row execute function public.set_updated_at();
+create trigger colors_set_updated_at before update on public.colors for each row execute function public.set_updated_at();
 create trigger invoices_set_updated_at before update on public.invoices for each row execute function public.set_updated_at();
 create trigger settings_set_updated_at before update on public.settings for each row execute function public.set_updated_at();
 
 alter table public.users enable row level security;
 alter table public.customers enable row level security;
 alter table public.product_categories enable row level security;
+alter table public.colors enable row level security;
 alter table public.products enable row level security;
+alter table public.product_colors enable row level security;
 alter table public.addons enable row level security;
 alter table public.invoices enable row level security;
 alter table public.invoice_items enable row level security;
@@ -175,7 +200,9 @@ create policy "Users can update their profile" on public.users for update to aut
 
 create policy "Authenticated users can manage customers" on public.customers for all to authenticated using (true) with check (true);
 create policy "Authenticated users can manage categories" on public.product_categories for all to authenticated using (true) with check (true);
+create policy "Authenticated users can manage colors" on public.colors for all to authenticated using (true) with check (true);
 create policy "Authenticated users can manage products" on public.products for all to authenticated using (true) with check (true);
+create policy "Authenticated users can manage product colors" on public.product_colors for all to authenticated using (true) with check (true);
 create policy "Authenticated users can manage addons" on public.addons for all to authenticated using (true) with check (true);
 create policy "Authenticated users can manage invoices" on public.invoices for all to authenticated using (true) with check (true);
 create policy "Authenticated users can manage invoice items" on public.invoice_items for all to authenticated using (true) with check (true);

@@ -17,6 +17,10 @@ export interface OrderProductItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  colorId: string | null;
+  colorName: string;
+  customColorName: string | null;
+  isCustomColor: boolean;
 }
 
 export interface OrderAddonItem {

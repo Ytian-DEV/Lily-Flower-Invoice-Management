@@ -1,8 +1,14 @@
 export { customerSchema } from '@/validation/customers';
 export type { CustomerFormValues } from '@/validation/customers';
-export { addonSchema, productCategorySchema, productSchema } from '@/validation/products';
+export {
+  addonSchema,
+  colorSchema,
+  productCategorySchema,
+  productSchema,
+} from '@/validation/products';
 export type {
   AddonFormValues,
+  ColorFormValues,
   ProductCategoryFormValues,
   ProductFormValues,
 } from '@/validation/products';

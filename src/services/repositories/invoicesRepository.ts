@@ -197,6 +197,9 @@ export const invoicesRepository = {
       quantity: item.quantity,
       unit_price: item.unitPrice,
       total_price: item.totalPrice,
+      color_id: item.colorId,
+      color_name: item.isCustomColor ? null : item.colorName,
+      custom_color_name: item.isCustomColor ? item.customColorName : null,
     }));
     const addonPayload: TableInsert<'invoice_addons'>[] = addons.map((item) => ({
       invoice_id: invoiceId,

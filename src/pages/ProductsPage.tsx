@@ -24,12 +24,18 @@ import {
 import {
   AddonDetails,
   AddonForm,
+  CategoryDetails,
+  CategoryForm,
+  ColorDetails,
+  ColorForm,
   ProductDetails,
   ProductForm,
   useProductCatalog,
   type Addon,
   type CatalogDialogMode,
   type CatalogTab,
+  type Color,
+  type ProductCategory,
   type ProductViewModel,
 } from '@/features/products';
 import {
@@ -37,13 +43,24 @@ import {
   formatPeso,
 } from '@/features/products/utils/catalogFormatters';
 import { addonsRepository } from '@/services/repositories/addonsRepository';
-import { productsRepository } from '@/services/repositories/productsRepository';
+import {
+  colorsRepository,
+  productCategoriesRepository,
+  productsRepository,
+} from '@/services/repositories/productsRepository';
 import type { ProductAvailability } from '@/types/database';
-import type { AddonFormValues, ProductFormValues } from '@/validation';
+import type {
+  AddonFormValues,
+  ColorFormValues,
+  ProductCategoryFormValues,
+  ProductFormValues,
+} from '@/validation';
 
 const tabs: TabItem[] = [
   { id: 'products', label: 'Bouquets' },
   { id: 'addons', label: 'Add-ons' },
+  { id: 'colors', label: 'Colors' },
+  { id: 'categories', label: 'Categories' },
 ];
 
 const pageSize = 10;
@@ -53,6 +70,7 @@ export function ProductsPage() {
   const {
     addons,
     categories,
+    colors,
     errorMessage,
     filters,
     isLoading,
@@ -68,10 +86,21 @@ export function ProductsPage() {
   const [dialogMode, setDialogMode] = useState<CatalogDialogMode | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductViewModel | null>(null);
   const [selectedAddon, setSelectedAddon] = useState<Addon | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ProductViewModel | Addon | null>(null);
+  const [selectedColor, setSelectedColor] = useState<Color | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<
+    ProductViewModel | Addon | Color | ProductCategory | null
+  >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const activeItems = activeTab === 'products' ? products : addons;
+  const activeItems =
+    activeTab === 'products'
+      ? products
+      : activeTab === 'addons'
+        ? addons
+        : activeTab === 'colors'
+          ? colors
+          : categories;
   const pageCount = Math.max(1, Math.ceil(activeItems.length / pageSize));
   const paginatedProducts = useMemo(
     () => products.slice((page - 1) * pageSize, page * pageSize),
@@ -81,10 +110,26 @@ export function ProductsPage() {
     () => addons.slice((page - 1) * pageSize, page * pageSize),
     [addons, page],
   );
+  const paginatedColors = useMemo(
+    () => colors.slice((page - 1) * pageSize, page * pageSize),
+    [colors, page],
+  );
+  const paginatedCategories = useMemo(
+    () => categories.slice((page - 1) * pageSize, page * pageSize),
+    [categories, page],
+  );
 
   const productColumns: DataTableColumn<ProductViewModel>[] = [
     { id: 'product_name', header: 'Product Name', accessor: 'product_name' },
     { id: 'category', header: 'Category', accessor: 'categoryName' },
+    {
+      id: 'colors',
+      header: 'Colors',
+      cell: (row) =>
+        row.colors.length > 0
+          ? row.colors.map((color) => color.color_name).join(', ')
+          : 'No colors',
+    },
     {
       id: 'stem_count',
       header: 'Stem Count',
@@ -110,6 +155,58 @@ export function ProductsPage() {
       id: 'updated_at',
       header: 'Last Updated',
       cell: (row) => formatCatalogDate(row.updated_at),
+    },
+  ];
+
+  const colorColumns: DataTableColumn<Color>[] = [
+    { id: 'color_name', header: 'Color Name', accessor: 'color_name' },
+    {
+      id: 'hex_color',
+      header: 'Hex Color',
+      cell: (row) => (
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="size-4 rounded-full border border-border"
+            style={{ backgroundColor: row.hex_color }}
+          />
+          {row.hex_color}
+        </span>
+      ),
+    },
+    {
+      id: 'availability',
+      header: 'Status',
+      cell: (row) => (
+        <StatusChip
+          status={row.availability === 'available' ? 'ready' : 'cancelled'}
+          label={row.availability === 'available' ? 'Active' : 'Inactive'}
+        />
+      ),
+    },
+    {
+      id: 'description',
+      header: 'Description',
+      cell: (row) => row.description || 'No description',
+    },
+  ];
+
+  const categoryColumns: DataTableColumn<ProductCategory>[] = [
+    { id: 'name', header: 'Category Name', accessor: 'name' },
+    {
+      id: 'availability',
+      header: 'Status',
+      cell: (row) => (
+        <StatusChip
+          status={row.availability === 'available' ? 'ready' : 'cancelled'}
+          label={row.availability === 'available' ? 'Active' : 'Inactive'}
+        />
+      ),
+    },
+    { id: 'sort_order', header: 'Sort Order', accessor: 'sort_order' },
+    {
+      id: 'description',
+      header: 'Description',
+      cell: (row) => row.description || 'No description',
     },
   ];
 
@@ -146,6 +243,8 @@ export function ProductsPage() {
   const openCreateDialog = () => {
     setSelectedProduct(null);
     setSelectedAddon(null);
+    setSelectedColor(null);
+    setSelectedCategory(null);
     setDialogMode('create');
   };
 
@@ -153,6 +252,8 @@ export function ProductsPage() {
     setDialogMode(null);
     setSelectedProduct(null);
     setSelectedAddon(null);
+    setSelectedColor(null);
+    setSelectedCategory(null);
   };
 
   const handleProductSubmit = async (values: ProductFormValues) => {
@@ -205,6 +306,56 @@ export function ProductsPage() {
     await refresh();
   };
 
+  const handleColorSubmit = async (values: ColorFormValues) => {
+    setIsSubmitting(true);
+    const result = selectedColor
+      ? await colorsRepository.update(selectedColor.id, values)
+      : await colorsRepository.create(values);
+
+    setIsSubmitting(false);
+
+    if (result.error) {
+      showToast({
+        variant: 'error',
+        title: 'Color save failed',
+        description: result.error.message,
+      });
+      return;
+    }
+
+    showToast({
+      variant: 'success',
+      title: selectedColor ? 'Color updated' : 'Color created',
+    });
+    closeDialog();
+    await refresh();
+  };
+
+  const handleCategorySubmit = async (values: ProductCategoryFormValues) => {
+    setIsSubmitting(true);
+    const result = selectedCategory
+      ? await productCategoriesRepository.update(selectedCategory.id, values)
+      : await productCategoriesRepository.create(values);
+
+    setIsSubmitting(false);
+
+    if (result.error) {
+      showToast({
+        variant: 'error',
+        title: 'Category save failed',
+        description: result.error.message,
+      });
+      return;
+    }
+
+    showToast({
+      variant: 'success',
+      title: selectedCategory ? 'Category updated' : 'Category created',
+    });
+    closeDialog();
+    await refresh();
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) {
       return;
@@ -214,7 +365,11 @@ export function ProductsPage() {
     const result =
       'product_name' in deleteTarget
         ? await productsRepository.remove(deleteTarget.id)
-        : await addonsRepository.remove(deleteTarget.id);
+        : 'addon_name' in deleteTarget
+          ? await addonsRepository.remove(deleteTarget.id)
+          : 'color_name' in deleteTarget
+            ? await colorsRepository.remove(deleteTarget.id)
+            : await productCategoriesRepository.remove(deleteTarget.id);
     setIsSubmitting(false);
 
     if (result.error) {
@@ -231,21 +386,29 @@ export function ProductsPage() {
     await refresh();
   };
 
-  const renderActions = (row: ProductViewModel | Addon) => (
+  const renderActions = (row: ProductViewModel | Addon | Color | ProductCategory) => (
     <ActionMenu
       onView={() => {
         if ('product_name' in row) {
           setSelectedProduct(row);
-        } else {
+        } else if ('addon_name' in row) {
           setSelectedAddon(row);
+        } else if ('color_name' in row) {
+          setSelectedColor(row);
+        } else {
+          setSelectedCategory(row);
         }
         setDialogMode('details');
       }}
       onEdit={() => {
         if ('product_name' in row) {
           setSelectedProduct(row);
-        } else {
+        } else if ('addon_name' in row) {
           setSelectedAddon(row);
+        } else if ('color_name' in row) {
+          setSelectedColor(row);
+        } else {
+          setSelectedCategory(row);
         }
         setDialogMode('edit');
       }}
@@ -272,7 +435,13 @@ export function ProductsPage() {
       }
       primaryAction={
         <Button onClick={openCreateDialog}>
-          {activeTab === 'products' ? 'Create Product' : 'Create Add-on'}
+          {activeTab === 'products'
+            ? 'Create Bouquet'
+            : activeTab === 'addons'
+              ? 'Create Add-on'
+              : activeTab === 'colors'
+                ? 'Create Color'
+                : 'Create Category'}
         </Button>
       }
       toolbarSlot={
@@ -281,7 +450,11 @@ export function ProductsPage() {
           searchPlaceholder={
             activeTab === 'products'
               ? 'Search products or categories...'
-              : 'Search add-ons...'
+              : activeTab === 'addons'
+                ? 'Search add-ons...'
+                : activeTab === 'colors'
+                  ? 'Search colors...'
+                  : 'Search categories...'
           }
           onSearchChange={(value) => {
             setPage(1);
@@ -289,7 +462,15 @@ export function ProductsPage() {
           }}
           onRefresh={refresh}
           onCreate={openCreateDialog}
-          createLabel={activeTab === 'products' ? 'Create Product' : 'Create Add-on'}
+          createLabel={
+            activeTab === 'products'
+              ? 'Create Bouquet'
+              : activeTab === 'addons'
+                ? 'Create Add-on'
+                : activeTab === 'colors'
+                  ? 'Create Color'
+                  : 'Create Category'
+          }
         />
       }
       filterSlot={
@@ -321,8 +502,20 @@ export function ProductsPage() {
             onChange={(event) => updateAvailability(event.target.value)}
             options={[
               { label: 'All Availability', value: 'all' },
-              { label: 'Available', value: 'available' },
-              { label: 'Unavailable', value: 'unavailable' },
+              {
+                label:
+                  activeTab === 'colors' || activeTab === 'categories'
+                    ? 'Active'
+                    : 'Available',
+                value: 'available',
+              },
+              {
+                label:
+                  activeTab === 'colors' || activeTab === 'categories'
+                    ? 'Inactive'
+                    : 'Unavailable',
+                value: 'unavailable',
+              },
             ]}
           />
           <Select
@@ -367,7 +560,7 @@ export function ProductsPage() {
               pageSize={pageSize}
               onPageChange={setPage}
             />
-          ) : (
+          ) : activeTab === 'addons' ? (
             <CrudTable
               columns={addonColumns}
               data={paginatedAddons}
@@ -378,6 +571,46 @@ export function ProductsPage() {
                   title="No add-ons yet."
                   description="Add optional extras like ribbon, message cards, or lights."
                   actionLabel="Add Add-on"
+                  onAction={openCreateDialog}
+                />
+              }
+              actions={renderActions}
+              page={page}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              onPageChange={setPage}
+            />
+          ) : activeTab === 'colors' ? (
+            <CrudTable
+              columns={colorColumns}
+              data={paginatedColors}
+              getRowId={(row) => row.id}
+              isLoading={isLoading}
+              emptyState={
+                <CrudEmptyState
+                  title="No colors yet."
+                  description="Add color options that can be assigned to bouquets."
+                  actionLabel="Add Color"
+                  onAction={openCreateDialog}
+                />
+              }
+              actions={renderActions}
+              page={page}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              onPageChange={setPage}
+            />
+          ) : (
+            <CrudTable
+              columns={categoryColumns}
+              data={paginatedCategories}
+              getRowId={(row) => row.id}
+              isLoading={isLoading}
+              emptyState={
+                <CrudEmptyState
+                  title="No categories yet."
+                  description="Add bouquet categories for product organization."
+                  actionLabel="Add Category"
                   onAction={openCreateDialog}
                 />
               }
@@ -400,11 +633,19 @@ export function ProductsPage() {
                 ? 'Catalog Details'
                 : activeTab === 'products'
                   ? selectedProduct
-                    ? 'Edit Product'
-                    : 'Create Product'
-                  : selectedAddon
-                    ? 'Edit Add-on'
-                    : 'Create Add-on'
+                    ? 'Edit Bouquet'
+                    : 'Create Bouquet'
+                  : activeTab === 'addons'
+                    ? selectedAddon
+                      ? 'Edit Add-on'
+                      : 'Create Add-on'
+                    : activeTab === 'colors'
+                      ? selectedColor
+                        ? 'Edit Color'
+                        : 'Create Color'
+                      : selectedCategory
+                        ? 'Edit Category'
+                        : 'Create Category'
             }
             width="xl"
           >
@@ -414,9 +655,16 @@ export function ProductsPage() {
             {dialogMode === 'details' && selectedAddon ? (
               <AddonDetails addon={selectedAddon} />
             ) : null}
+            {dialogMode === 'details' && selectedColor ? (
+              <ColorDetails color={selectedColor} />
+            ) : null}
+            {dialogMode === 'details' && selectedCategory ? (
+              <CategoryDetails category={selectedCategory} />
+            ) : null}
             {dialogMode !== 'details' && activeTab === 'products' ? (
               <ProductForm
                 categories={categories}
+                colors={colors.filter((color) => color.availability === 'available')}
                 product={selectedProduct}
                 isSubmitting={isSubmitting}
                 onCancel={closeDialog}
@@ -431,6 +679,22 @@ export function ProductsPage() {
                 onSubmit={handleAddonSubmit}
               />
             ) : null}
+            {dialogMode !== 'details' && activeTab === 'colors' ? (
+              <ColorForm
+                color={selectedColor}
+                isSubmitting={isSubmitting}
+                onCancel={closeDialog}
+                onSubmit={handleColorSubmit}
+              />
+            ) : null}
+            {dialogMode !== 'details' && activeTab === 'categories' ? (
+              <CategoryForm
+                category={selectedCategory}
+                isSubmitting={isSubmitting}
+                onCancel={closeDialog}
+                onSubmit={handleCategorySubmit}
+              />
+            ) : null}
           </Modal>
           <DeleteConfirmationDialog
             isOpen={Boolean(deleteTarget)}
@@ -438,7 +702,11 @@ export function ProductsPage() {
               deleteTarget
                 ? 'product_name' in deleteTarget
                   ? deleteTarget.product_name
-                  : deleteTarget.addon_name
+                  : 'addon_name' in deleteTarget
+                    ? deleteTarget.addon_name
+                    : 'color_name' in deleteTarget
+                      ? deleteTarget.color_name
+                      : deleteTarget.name
                 : 'catalog item'
             }
             isLoading={isSubmitting}

@@ -28,6 +28,13 @@ export function ProductDetails({ product }: ProductDetailsProps) {
             { label: 'Product Name', value: product.product_name },
             { label: 'Category', value: product.categoryName },
             { label: 'Stem Count', value: product.stem_count ?? 'Not specified' },
+            {
+              label: 'Available Colors',
+              value:
+                product.colors.length > 0
+                  ? product.colors.map((color) => color.color_name).join(', ')
+                  : 'No colors assigned',
+            },
             { label: 'Base Price', value: formatPeso(product.base_price) },
             { label: 'Availability', value: product.availability },
             { label: 'Description', value: product.description || 'No description' },
