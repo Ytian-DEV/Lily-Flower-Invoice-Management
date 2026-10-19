@@ -1,13 +1,62 @@
 import { supabase } from '@/lib/supabase';
-import type { OrderAddonItem, OrderProductItem } from '@/features/orders/types';
-import { createInvoiceNumber } from '@/features/orders/utils/invoiceNumber';
-import type { InvoiceStatus, TableInsert, TableRow, TableUpdate } from '@/types/database';
+import type {
+  InvoiceStatus,
+  PaymentMethod,
+  TableInsert,
+  TableRow,
+  TableUpdate,
+} from '@/types/database';
 
 export interface InvoiceQuery {
   search?: string;
   status?: InvoiceStatus;
   page?: number;
   pageSize?: number;
+}
+
+/** Order header fields; totals are computed by the database from the lines. */
+export type OrderInvoicePayload = {
+  customer_id: string | null;
+  customer_name: string;
+  customer_phone: string;
+  discount_percent: number;
+  delivery_fee: number;
+  status: InvoiceStatus;
+  notes: string | null;
+  delivery_date: string;
+  delivery_address: string;
+  payment_method?: PaymentMethod;
+};
+
+export type OrderItemPayload = {
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  color_id: string | null;
+  color_name: string | null;
+  custom_color_name: string | null;
+};
+
+export type OrderAddonPayload = {
+  addon_id: string | null;
+  addon_name: string;
+  quantity: number;
+  unit_price: number;
+};
+
+export type OrderDownpaymentPayload = {
+  downpayment_percent: number;
+  payment_method: PaymentMethod;
+  reference_number: string | null;
+  receipt_path: string | null;
+};
+
+export interface OrderSavePayload {
+  invoice: OrderInvoicePayload;
+  items: OrderItemPayload[];
+  addons: OrderAddonPayload[];
+  payment?: OrderDownpaymentPayload;
 }
 
 export type InvoiceItemWithProduct = TableRow<'invoice_items'> & {
@@ -160,82 +209,20 @@ export const invoicesRepository = {
 
     return request;
   },
-  async generateInvoiceNumber() {
-    const today = new Date();
-    const prefix = `INV-${today.toISOString().slice(0, 10).replaceAll('-', '')}`;
-    const { count, error } = await supabase
-      .from('invoices')
-      .select('id', { count: 'exact', head: true })
-      .like('invoice_number', `${prefix}-%`);
-
-    if (error) {
-      return { invoiceNumber: '', error };
-    }
-
-    return { invoiceNumber: createInvoiceNumber((count ?? 0) + 1, today), error: null };
+  createOrder({ addons, invoice, items, payment }: OrderSavePayload) {
+    return supabase.rpc('create_order', {
+      p_invoice: invoice,
+      p_items: items,
+      p_addons: addons,
+      p_payment: payment ?? null,
+    });
   },
-  async createOrder(
-    invoice: TableInsert<'invoices'>,
-    products: OrderProductItem[],
-    addons: OrderAddonItem[],
-    initialPayment?: Omit<TableInsert<'payments'>, 'invoice_id'>,
-  ) {
-    const invoiceResult = await supabase
-      .from('invoices')
-      .insert(invoice)
-      .select('*')
-      .single();
-
-    if (invoiceResult.error) {
-      return invoiceResult;
-    }
-
-    const invoiceId = invoiceResult.data.id;
-    const itemPayload: TableInsert<'invoice_items'>[] = products.map((item) => ({
-      invoice_id: invoiceId,
-      product_id: item.productId,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.totalPrice,
-      color_id: item.colorId,
-      color_name: item.isCustomColor ? null : item.colorName,
-      custom_color_name: item.isCustomColor ? item.customColorName : null,
-    }));
-    const addonPayload: TableInsert<'invoice_addons'>[] = addons.map((item) => ({
-      invoice_id: invoiceId,
-      addon_id: item.addonId,
-      quantity: item.quantity,
-      unit_price: item.unitPrice,
-      total_price: item.totalPrice,
-    }));
-
-    if (itemPayload.length > 0) {
-      const itemResult = await supabase.from('invoice_items').insert(itemPayload);
-
-      if (itemResult.error) {
-        return { data: null, error: itemResult.error };
-      }
-    }
-
-    if (addonPayload.length > 0) {
-      const addonResult = await supabase.from('invoice_addons').insert(addonPayload);
-
-      if (addonResult.error) {
-        return { data: null, error: addonResult.error };
-      }
-    }
-
-    if (initialPayment && initialPayment.amount > 0) {
-      const paymentResult = await supabase.from('payments').insert({
-        ...initialPayment,
-        invoice_id: invoiceId,
-      });
-
-      if (paymentResult.error) {
-        return { data: null, error: paymentResult.error };
-      }
-    }
-
-    return invoiceResult;
+  updateOrder(id: string, { addons, invoice, items }: Omit<OrderSavePayload, 'payment'>) {
+    return supabase.rpc('update_order', {
+      p_invoice_id: id,
+      p_invoice: invoice,
+      p_items: items,
+      p_addons: addons,
+    });
   },
 };

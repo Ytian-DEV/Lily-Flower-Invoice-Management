@@ -195,6 +195,7 @@ export interface Database {
           invoice_number: string;
           customer_id: string | null;
           customer_name: string;
+          customer_phone: string | null;
           subtotal: number;
           discount_percent: number;
           discount_amount: number;
@@ -246,6 +247,7 @@ export interface Database {
           id: string;
           invoice_id: string;
           product_id: string | null;
+          product_name: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -258,6 +260,7 @@ export interface Database {
           id?: string;
           invoice_id: string;
           product_id?: string | null;
+          product_name?: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -289,6 +292,7 @@ export interface Database {
           id: string;
           invoice_id: string;
           addon_id: string | null;
+          addon_name: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -297,6 +301,7 @@ export interface Database {
           id?: string;
           invoice_id: string;
           addon_id?: string | null;
+          addon_name?: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -417,7 +422,30 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      create_order: {
+        Args: {
+          p_invoice: Json;
+          p_items: Json;
+          p_addons?: Json;
+          p_payment?: Json | null;
+        };
+        Returns: Database['public']['Tables']['invoices']['Row'];
+      };
+      update_order: {
+        Args: {
+          p_invoice_id: string;
+          p_invoice: Json;
+          p_items: Json;
+          p_addons?: Json;
+        };
+        Returns: Database['public']['Tables']['invoices']['Row'];
+      };
+      record_payment: {
+        Args: { p_payment: Json };
+        Returns: Database['public']['Tables']['payments']['Row'];
+      };
+    };
     Enums: {
       invoice_status: InvoiceStatus;
       payment_status: PaymentStatus;

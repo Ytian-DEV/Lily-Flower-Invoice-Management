@@ -1,18 +1,22 @@
-import { forwardRef } from 'react';
+import { forwardRef, useState, type ReactNode } from 'react';
 
-import { Badge, StatusChip } from '@/components/ui';
-import { LogoPlaceholder } from '@/components/layout/LogoPlaceholder';
 import type { Order } from '@/features/orders';
+import {
+  getInvoicePaidAmount,
+  getInvoicePaymentStatus,
+  type InvoicePaymentStatus,
+} from '@/features/orders/utils/paymentStatus';
+import {
+  formatOrderCurrency,
+  formatOrderDate,
+} from '@/features/orders/utils/orderFormatters';
 import type {
   InvoiceAddonWithAddon,
   InvoiceItemWithProduct,
   InvoicePreviewPayment,
 } from '@/services/repositories/invoicesRepository';
-import {
-  formatOrderCurrency,
-  formatOrderDate,
-} from '@/features/orders/utils/orderFormatters';
-import type { TableRow } from '@/types/database';
+import type { PaymentMethod, TableRow } from '@/types/database';
+import { cn } from '@/utils/cn';
 
 interface InvoiceDocumentProps {
   customer?: TableRow<'customers'> | null;
@@ -23,58 +27,78 @@ interface InvoiceDocumentProps {
   settings?: TableRow<'settings'> | null;
 }
 
-function normalizePaymentMethod(value: Order['payment_method']) {
-  if (!value) {
-    return 'NOT SELECTED';
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  gcash: 'GCash',
+  bank_transfer: 'Bank Transfer',
+  maribank: 'MariBank',
+};
+
+const paymentStatusLabels: Record<InvoicePaymentStatus, string> = {
+  paid: 'Paid in full',
+  'partially-paid': 'Partially paid',
+  unpaid: 'Unpaid',
+};
+
+const fallbackBusiness = {
+  name: 'Lily Flowers - Baybay City Branch',
+  address: 'Purok 1, Santa Cruz, Baybay City, Leyte 6521',
+  phones: '+639152111698 / +639613899028',
+  facebook: 'Lily Flowers Baybay City',
+};
+
+function formatPercent(value: number) {
+  return `${Number(value.toFixed(2))}%`;
+}
+
+function BusinessLogo() {
+  const [isHidden, setIsHidden] = useState(false);
+
+  if (isHidden) {
+    return null;
   }
 
-  if (value === 'cash') {
-    return 'IN-CASH';
-  }
-
-  return value.replaceAll('_', ' ').toUpperCase();
-}
-
-function normalizeStatus(value: Order['status']) {
-  return value.replaceAll('_', ' ').toUpperCase();
-}
-
-function paymentStatusFor(order: Order) {
-  const paidAmount = Math.max(0, order.total_amount - order.remaining_balance);
-
-  return paidAmount <= 0
-    ? 'unpaid'
-    : order.remaining_balance <= 0
-      ? 'paid'
-      : 'partially-paid';
-}
-
-function referenceNumberFor(
-  paymentMethod: Order['payment_method'],
-  payments: InvoicePreviewPayment[],
-) {
-  if (paymentMethod === 'cash') {
-    return 'N/A';
-  }
-
-  const payment = payments
-    .filter((item) => item.payment_method === paymentMethod)
-    .sort((left, right) => right.created_at.localeCompare(left.created_at))[0];
-
-  return payment?.reference_number || 'N/A';
-}
-
-function InvoiceDetail({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex justify-between gap-5 text-sm">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="max-w-72 text-right font-semibold text-slate-950">{value}</dd>
+    <img
+      src="/images/lily-logo.png"
+      alt=""
+      className="size-16 shrink-0 object-contain"
+      onError={() => setIsHidden(true)}
+    />
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-[0.7rem] font-semibold uppercase tracking-wider text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm text-slate-900">{children}</dd>
     </div>
   );
 }
 
-function invoiceItemColor(item: InvoiceItemWithProduct) {
-  return item.custom_color_name || item.color_name || 'Not selected';
+function TotalRow({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: ReactNode;
+  value: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-baseline justify-between gap-6 py-1.5 text-sm',
+        emphasis && 'text-base font-semibold text-slate-950',
+      )}
+    >
+      <dt className={emphasis ? undefined : 'text-slate-600'}>{label}</dt>
+      <dd className="tabular-nums">{value}</dd>
+    </div>
+  );
 }
 
 export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
@@ -82,226 +106,190 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
     { addons = [], customer, items = [], order, payments = [], settings },
     ref,
   ) {
-    const paidAmount = Math.max(0, order.total_amount - order.remaining_balance);
-    const businessName = settings?.business_name ?? 'Lily Flowers - Baybay City Branch';
-    const branchName = 'Baybay City Branch';
-    const phoneNumbers = [settings?.phone_1, settings?.phone_2]
-      .filter(Boolean)
-      .join(' / ');
-    const paymentMethod = normalizePaymentMethod(order.payment_method);
-    const referenceNumber = referenceNumberFor(order.payment_method, payments);
+    const businessName = settings?.business_name ?? fallbackBusiness.name;
+    const businessAddress = settings?.business_address ?? fallbackBusiness.address;
+    const phoneNumbers =
+      [settings?.phone_1, settings?.phone_2].filter(Boolean).join(' / ') ||
+      fallbackBusiness.phones;
+    const facebook = settings ? settings.facebook : fallbackBusiness.facebook;
     const customerName = order.customer_name || customer?.full_name || 'Walk-in customer';
+    const customerPhone = order.customer_phone ?? customer?.phone_number ?? null;
+    const deliveryAddress = order.delivery_address ?? customer?.delivery_address ?? null;
+    const paidAmount = getInvoicePaidAmount(order);
+    const paymentStatus = getInvoicePaymentStatus(order);
+    const sortedPayments = [...payments].sort(
+      (left, right) =>
+        left.payment_date.localeCompare(right.payment_date) ||
+        left.created_at.localeCompare(right.created_at),
+    );
 
     return (
       <article
         ref={ref}
-        className="invoice-document mx-auto w-full max-w-5xl rounded-lg border border-slate-200 bg-white p-8 text-slate-950 shadow-sm print:max-w-none print:rounded-none print:border-0 print:p-8 print:shadow-none"
+        className="invoice-document mx-auto w-full max-w-4xl rounded-lg border border-slate-200 bg-white px-6 py-10 text-slate-900 shadow-sm sm:px-10 sm:py-12 print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none"
       >
-        <header className="grid gap-8 md:grid-cols-[1.15fr_0.85fr]">
-          <div>
-            <div className="flex items-center gap-4">
-              <LogoPlaceholder size="lg" />
-              <div>
-                <h2 className="font-heading text-2xl font-bold text-slate-950">
-                  {businessName}
-                </h2>
-                <p className="mt-1 text-sm font-semibold text-slate-600">{branchName}</p>
-              </div>
-            </div>
-            <div className="mt-4 max-w-xl space-y-1 text-sm leading-6 text-slate-600">
-              <p>
-                {settings?.business_address ??
-                  'Purok 1, Santa Cruz, Baybay City, Leyte 6521'}
+        <header className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex gap-4">
+            <BusinessLogo />
+            <div>
+              <p className="font-heading text-xl font-semibold text-slate-950">
+                {businessName}
               </p>
-              <p>{phoneNumbers || '+639152111698 / +639613899028'}</p>
-              <p>{settings?.facebook ?? 'Lily Flowers Baybay City'}</p>
+              <address className="mt-2 space-y-0.5 text-sm not-italic leading-6 text-slate-600">
+                <p>{businessAddress}</p>
+                <p>{phoneNumbers}</p>
+                {facebook ? <p>Facebook: {facebook}</p> : null}
+              </address>
             </div>
           </div>
 
-          <div className="text-left md:text-right">
-            <p className="text-sm font-bold tracking-wide text-primary">INVOICE</p>
-            <h1 className="mt-2 font-heading text-4xl font-bold text-slate-950">
-              {order.invoice_number}
-            </h1>
-            <dl className="mt-4 space-y-2 text-sm">
-              <InvoiceDetail
-                label="Invoice Date"
-                value={formatOrderDate(order.created_at)}
-              />
-              <div className="flex items-center justify-between gap-5 md:justify-end">
-                <dt className="text-slate-500 md:hidden">Order Status</dt>
-                <dd>
-                  <StatusChip
-                    status={
-                      order.status === 'out_for_delivery'
-                        ? 'out-for-delivery'
-                        : order.status
-                    }
-                  />
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-5 md:justify-end">
-                <dt className="text-slate-500 md:hidden">Payment Status</dt>
-                <dd>
-                  <StatusChip status={paymentStatusFor(order)} />
-                </dd>
-              </div>
+          <div className="sm:text-right">
+            <p className="font-heading text-3xl font-semibold tracking-tight text-primary-dark">
+              Invoice
+            </p>
+            <dl className="mt-3 grid grid-cols-[auto_auto] gap-x-6 gap-y-1 text-sm sm:justify-end">
+              <dt className="text-slate-500">Invoice no.</dt>
+              <dd className="font-semibold tabular-nums text-slate-950">
+                {order.invoice_number}
+              </dd>
+              <dt className="text-slate-500">Date issued</dt>
+              <dd className="tabular-nums">{formatOrderDate(order.created_at)}</dd>
             </dl>
           </div>
         </header>
 
-        <div className="mt-7 h-px w-full bg-primary" />
+        <dl className="mt-10 grid gap-6 border-y border-slate-200 py-6 sm:grid-cols-3">
+          <Field label="Billed to">
+            <p className="font-semibold">{customerName}</p>
+            {customerPhone ? <p className="text-slate-600">{customerPhone}</p> : null}
+          </Field>
+          <Field label="Deliver to">
+            {deliveryAddress ?? <span className="text-slate-500">For pickup</span>}
+          </Field>
+          <Field label="Delivery date">{formatOrderDate(order.delivery_date)}</Field>
+        </dl>
 
-        <section className="mt-8 grid gap-8 md:grid-cols-2">
-          <div>
-            <h3 className="text-sm font-bold uppercase text-slate-600">Customer</h3>
-            <dl className="mt-4 space-y-3">
-              <InvoiceDetail label="Customer Name" value={customerName} />
-            </dl>
+        <table className="mt-8 w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-300 text-left text-[0.7rem] uppercase tracking-wider text-slate-500">
+              <th className="pb-2 pr-4 font-semibold">Item</th>
+              <th className="pb-2 pr-4 font-semibold">Color</th>
+              <th className="pb-2 pr-4 text-right font-semibold">Qty</th>
+              <th className="pb-2 pr-4 text-right font-semibold">Unit price</th>
+              <th className="pb-2 text-right font-semibold">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr className="border-b border-slate-100" key={item.id}>
+                <td className="py-3 pr-4 font-medium text-slate-950">
+                  {item.product_name ?? item.products?.product_name ?? 'Bouquet'}
+                </td>
+                <td className="py-3 pr-4 text-slate-600">
+                  {item.custom_color_name || item.color_name || '—'}
+                </td>
+                <td className="py-3 pr-4 text-right tabular-nums">{item.quantity}</td>
+                <td className="py-3 pr-4 text-right tabular-nums">
+                  {formatOrderCurrency(item.unit_price)}
+                </td>
+                <td className="py-3 text-right tabular-nums">
+                  {formatOrderCurrency(item.total_price)}
+                </td>
+              </tr>
+            ))}
+            {addons.map((addon) => (
+              <tr className="border-b border-slate-100" key={addon.id}>
+                <td className="py-3 pr-4 font-medium text-slate-950">
+                  {addon.addon_name ?? addon.addons?.addon_name ?? 'Add-on'}
+                </td>
+                <td className="py-3 pr-4 text-slate-400">—</td>
+                <td className="py-3 pr-4 text-right tabular-nums">{addon.quantity}</td>
+                <td className="py-3 pr-4 text-right tabular-nums">
+                  {formatOrderCurrency(addon.unit_price)}
+                </td>
+                <td className="py-3 text-right tabular-nums">
+                  {formatOrderCurrency(addon.total_price)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="mt-6 grid gap-8 sm:grid-cols-[1fr_minmax(16rem,20rem)]">
+          <div className="text-sm text-slate-600">
+            {order.notes ? (
+              <>
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wider text-slate-500">
+                  Notes
+                </p>
+                <p className="mt-1 whitespace-pre-line">{order.notes}</p>
+              </>
+            ) : null}
           </div>
 
           <div>
-            <h3 className="text-sm font-bold uppercase text-slate-600">
-              Delivery Information
-            </h3>
-            <dl className="mt-4 space-y-3">
-              <InvoiceDetail
-                label="Delivery Date"
-                value={formatOrderDate(order.delivery_date)}
-              />
-              <InvoiceDetail
-                label="Delivery Address"
-                value={
-                  order.delivery_address ??
-                  customer?.delivery_address ??
-                  'No delivery address'
-                }
-              />
-              <InvoiceDetail label="Recipient" value={customerName} />
+            <dl>
+              <TotalRow label="Subtotal" value={formatOrderCurrency(order.subtotal)} />
+              {order.discount_amount > 0 ? (
+                <TotalRow
+                  label={`Discount (${formatPercent(order.discount_percent)})`}
+                  value={`-${formatOrderCurrency(order.discount_amount)}`}
+                />
+              ) : null}
+              {order.delivery_fee > 0 ? (
+                <TotalRow
+                  label="Delivery fee"
+                  value={formatOrderCurrency(order.delivery_fee)}
+                />
+              ) : null}
+              <div className="mt-1 border-t border-slate-300 pt-1">
+                <TotalRow
+                  label="Total"
+                  value={formatOrderCurrency(order.total_amount)}
+                  emphasis
+                />
+              </div>
             </dl>
+
+            {sortedPayments.length > 0 ? (
+              <dl className="mt-3 border-t border-slate-200 pt-2">
+                {sortedPayments.map((payment) => (
+                  <TotalRow
+                    key={payment.id}
+                    label={
+                      <>
+                        Paid {formatOrderDate(payment.payment_date)} ·{' '}
+                        {paymentMethodLabels[payment.payment_method]}
+                        {payment.reference_number ? (
+                          <span className="block text-xs text-slate-500">
+                            Ref. {payment.reference_number}
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                    value={`-${formatOrderCurrency(payment.amount)}`}
+                  />
+                ))}
+              </dl>
+            ) : null}
+
+            <div className="mt-3 flex items-baseline justify-between gap-6 rounded-md bg-accent/50 px-3 py-3">
+              <span className="font-semibold text-slate-950">Balance due</span>
+              <span className="text-lg font-semibold tabular-nums text-slate-950">
+                {formatOrderCurrency(order.remaining_balance)}
+              </span>
+            </div>
+            <p className="mt-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500">
+              {paymentStatusLabels[paymentStatus]}
+              {paymentStatus === 'partially-paid'
+                ? ` · ${formatOrderCurrency(paidAmount)} received`
+                : null}
+            </p>
           </div>
-        </section>
+        </div>
 
-        <section className="mt-8 grid gap-8 md:grid-cols-2">
-          <div>
-            <h3 className="text-sm font-bold uppercase text-slate-600">
-              Invoice Summary
-            </h3>
-            <dl className="mt-4 space-y-3">
-              <InvoiceDetail label="Created" value={formatOrderDate(order.created_at)} />
-              <InvoiceDetail label="Order Status" value={normalizeStatus(order.status)} />
-              <InvoiceDetail label="Payment Method" value={paymentMethod} />
-              <InvoiceDetail label="Notes" value={order.notes ?? 'None'} />
-            </dl>
-          </div>
-
-          <div>
-            <h3 className="text-sm font-bold uppercase text-slate-600">
-              Downpayment Details
-            </h3>
-            <dl className="mt-4 space-y-3">
-              <InvoiceDetail label="Mode of Payment" value={paymentMethod} />
-              <InvoiceDetail label="Reference Number" value={referenceNumber} />
-              <InvoiceDetail
-                label="Downpayment"
-                value={formatOrderCurrency(order.downpayment_amount)}
-              />
-            </dl>
-          </div>
-        </section>
-
-        <section className="mt-8 overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-left text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Description</th>
-                <th className="px-4 py-3 text-right font-semibold">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr className="border-t border-slate-200" key={item.id}>
-                  <td className="px-4 py-3">
-                    {item.products?.product_name ?? 'Bouquet'}
-                    <div className="mt-1 text-xs text-slate-500">
-                      {item.quantity} x {formatOrderCurrency(item.unit_price)}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      Color: {invoiceItemColor(item)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {formatOrderCurrency(item.total_price)}
-                  </td>
-                </tr>
-              ))}
-              {addons.map((addon) => (
-                <tr className="border-t border-slate-200" key={addon.id}>
-                  <td className="px-4 py-3">
-                    {addon.addons?.addon_name ?? 'Add-on'}
-                    <div className="mt-1 text-xs text-slate-500">
-                      {addon.quantity} x {formatOrderCurrency(addon.unit_price)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {formatOrderCurrency(addon.total_price)}
-                  </td>
-                </tr>
-              ))}
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-3">Subtotal</td>
-                <td className="px-4 py-3 text-right">
-                  {formatOrderCurrency(order.subtotal)}
-                </td>
-              </tr>
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-3">Discount</td>
-                <td className="px-4 py-3 text-right">
-                  -{formatOrderCurrency(order.discount_amount)}
-                </td>
-              </tr>
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-3">
-                  <div>Downpayment</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {paymentMethod} - Reference Number: {referenceNumber}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  {formatOrderCurrency(order.downpayment_amount)}
-                </td>
-              </tr>
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-3">Delivery Fee</td>
-                <td className="px-4 py-3 text-right">
-                  {formatOrderCurrency(order.delivery_fee)}
-                </td>
-              </tr>
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-4 text-base font-bold">Grand Total</td>
-                <td className="px-4 py-4 text-right text-base font-bold">
-                  {formatOrderCurrency(order.total_amount)}
-                </td>
-              </tr>
-              <tr className="border-t border-slate-200">
-                <td className="px-4 py-4 text-base font-bold">Paid Amount</td>
-                <td className="px-4 py-4 text-right text-base font-bold">
-                  {formatOrderCurrency(paidAmount)}
-                </td>
-              </tr>
-              <tr className="border-t border-primary/30 bg-accent/30">
-                <td className="px-4 py-5 text-xl font-bold">Remaining Balance</td>
-                <td className="px-4 py-5 text-right text-xl font-bold">
-                  {formatOrderCurrency(order.remaining_balance)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-        <footer className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6 text-sm text-slate-600">
-          <span>Thank you for choosing Lily Flowers.</span>
-          <Badge variant="info">Prepared for print, PDF, and image export</Badge>
+        <footer className="mt-12 border-t border-slate-200 pt-6 text-center text-sm text-slate-500">
+          Thank you for choosing {businessName.split(' - ')[0]}.
         </footer>
       </article>
     );

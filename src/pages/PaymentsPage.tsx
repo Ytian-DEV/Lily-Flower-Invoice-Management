@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
-import { Banknote, Eye, FileText, Plus, Receipt, Trash2, Upload } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router';
+import { Banknote, FileText, Plus, Receipt, Trash2, Upload } from 'lucide-react';
 
 import {
   Alert,
@@ -26,7 +26,12 @@ import {
   paymentReceiptsRepository,
   paymentsRepository,
 } from '@/services/repositories/paymentsRepository';
-import { getPublicUrl, uploadReceipt } from '@/services/storage';
+import {
+  createSignedUrl,
+  receiptPathFromImageUrl,
+  removeFile,
+  uploadReceipt,
+} from '@/services/storage';
 import type { PaymentMethod, TableRow } from '@/types/database';
 
 type Payment = TableRow<'payments'>;
@@ -58,7 +63,9 @@ const getPaymentStatus = (paidAmount: number, totalAmount: number) => {
   return paidAmount >= totalAmount ? 'paid' : 'partially-paid';
 };
 
-const todayInputValue = () => new Date().toISOString().slice(0, 10);
+// en-CA formats as YYYY-MM-DD; the shop runs on Manila time, not UTC.
+const todayInputValue = () =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
 
 export function PaymentsPage() {
   const { invoiceId } = useParams();
@@ -67,6 +74,7 @@ export function PaymentsPage() {
   const [invoice, setInvoice] = useState<Order | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [receipts, setReceipts] = useState<Record<string, PaymentReceipt>>({});
+  const [receiptUrls, setReceiptUrls] = useState<Record<string, string>>({});
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -113,15 +121,21 @@ export function PaymentsPage() {
         return [payment.id, data] as const;
       }),
     );
-    setReceipts(
-      Object.fromEntries(
-        receiptPairs
-          .filter((entry): entry is readonly [string, PaymentReceipt] =>
-            Boolean(entry[1]),
-          )
-          .map(([paymentId, receiptData]) => [paymentId, receiptData]),
-      ),
+    const loadedReceipts = receiptPairs.filter(
+      (entry): entry is readonly [string, PaymentReceipt] => Boolean(entry[1]),
     );
+    setReceipts(Object.fromEntries(loadedReceipts));
+
+    const urlPairs = await Promise.all(
+      loadedReceipts.map(async ([paymentId, receiptData]) => {
+        const { data } = await createSignedUrl(
+          'receipts',
+          receiptPathFromImageUrl(receiptData.image_url),
+        );
+        return [paymentId, data?.signedUrl ?? ''] as const;
+      }),
+    );
+    setReceiptUrls(Object.fromEntries(urlPairs.filter(([, url]) => Boolean(url))));
   };
 
   useEffect(() => {
@@ -225,26 +239,10 @@ export function PaymentsPage() {
     setIsSaving(true);
     setErrorMessage(null);
 
-    const nextPaidAmount = paidAmount + amount;
-    const nextRemaining = Math.max(0, invoice.total_amount - nextPaidAmount);
-    const paymentStatus = nextRemaining <= 0 ? 'paid' : 'partially_paid';
-    const { data: payment, error: paymentError } = await paymentsRepository.create({
-      invoice_id: selectedInvoiceId,
-      payment_method: form.payment_method,
-      amount,
-      reference_number: form.reference_number.trim() || null,
-      payment_status: paymentStatus,
-      payment_date: form.payment_date,
-    });
-
-    if (paymentError || !payment) {
-      setErrorMessage(paymentError?.message ?? 'Unable to save payment.');
-      setIsSaving(false);
-      return;
-    }
+    let receiptPath: string | null = null;
 
     if (receiptFile) {
-      const uploadResult = await uploadReceipt(receiptFile, payment.id);
+      const uploadResult = await uploadReceipt(receiptFile, selectedInvoiceId);
 
       if (uploadResult.error) {
         setErrorMessage(uploadResult.error.message);
@@ -252,19 +250,28 @@ export function PaymentsPage() {
         return;
       }
 
-      const publicUrl = getPublicUrl('receipts', uploadResult.data.path);
-      await paymentReceiptsRepository.create({
-        payment_id: payment.id,
-        image_url: publicUrl.data.publicUrl,
-        verified: false,
-      });
+      receiptPath = uploadResult.data.path;
     }
 
-    await invoicesRepository.update(selectedInvoiceId, {
-      downpayment_amount: nextPaidAmount,
-      remaining_balance: nextRemaining,
+    const { error: paymentError } = await paymentsRepository.record({
+      invoice_id: selectedInvoiceId,
       payment_method: form.payment_method,
+      amount,
+      reference_number: form.reference_number.trim() || null,
+      payment_date: form.payment_date,
+      receipt_path: receiptPath,
     });
+
+    if (paymentError) {
+      if (receiptPath) {
+        await removeFile('receipts', receiptPath);
+      }
+
+      setErrorMessage(paymentError.message);
+      setIsSaving(false);
+      return;
+    }
+
     await loadPayments(selectedInvoiceId);
     resetForm();
     setIsSaving(false);
@@ -519,15 +526,24 @@ export function PaymentsPage() {
                                   </strong>
                                 </span>
                               </div>
-                              {receiptData ? (
-                                <Link
-                                  to={receiptData.image_url}
+                              {receiptData && receiptUrls[payment.id] ? (
+                                <a
+                                  href={receiptUrls[payment.id]}
                                   target="_blank"
-                                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary-dark"
+                                  rel="noreferrer"
+                                  className="mt-4 inline-flex items-center gap-3 text-sm font-semibold text-primary-dark"
                                 >
-                                  <Eye className="size-4" />
-                                  View Receipt Thumbnail
-                                </Link>
+                                  <img
+                                    src={receiptUrls[payment.id]}
+                                    alt={`Receipt for ${formatOrderCurrency(payment.amount)} payment`}
+                                    className="size-16 rounded-md border border-border object-cover"
+                                  />
+                                  View receipt
+                                </a>
+                              ) : receiptData ? (
+                                <p className="mt-4 text-sm text-muted">
+                                  Receipt attached but could not be loaded.
+                                </p>
                               ) : (
                                 <p className="mt-4 inline-flex items-center gap-2 text-sm text-muted">
                                   <Banknote className="size-4" />
