@@ -1,45 +1,50 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react';
 
+import { Field } from '@/components/ui/Field';
+import { controlClasses, fieldDescriptionId } from '@/components/ui/styles';
 import { cn } from '@/utils/cn';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
-  helperText?: string;
+  helperText?: ReactNode;
   leadingIcon?: ReactNode;
-  trailingIcon?: ReactNode;
+  trailingSlot?: ReactNode;
+  containerClassName?: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   (
     {
       className,
-      disabled,
+      containerClassName,
       error,
       helperText,
       id,
       label,
       leadingIcon,
       required,
-      trailingIcon,
+      trailingSlot,
       ...props
     },
     ref,
   ) => {
-    const inputId = id ?? props.name;
-    const descriptionId = inputId ? `${inputId}-description` : undefined;
+    const generatedId = useId();
+    const inputId = id ?? generatedId;
+    const hasDescription = Boolean(error || helperText);
 
     return (
-      <div className="grid gap-2">
-        {label ? (
-          <label htmlFor={inputId} className="text-sm font-semibold text-text">
-            {label}
-            {required ? <span className="text-primary"> *</span> : null}
-          </label>
-        ) : null}
+      <Field
+        id={inputId}
+        label={label}
+        required={required}
+        error={error}
+        helperText={helperText}
+        className={containerClassName}
+      >
         <div className="relative">
           {leadingIcon ? (
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+            <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle [&_svg]:size-4">
               {leadingIcon}
             </span>
           ) : null}
@@ -47,34 +52,26 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             required={required}
-            disabled={disabled}
             aria-invalid={error ? true : undefined}
-            aria-describedby={descriptionId}
+            aria-describedby={hasDescription ? fieldDescriptionId(inputId) : undefined}
             className={cn(
-              'min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-text transition placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-accent/40 disabled:text-muted',
-              leadingIcon && 'pl-11',
-              trailingIcon && 'pr-11',
-              error &&
-                'border-primary-dark focus:border-primary-dark focus:ring-primary-dark/20',
+              controlClasses,
+              'h-10 px-3 tabular-nums',
+              props.type === 'file' &&
+                'h-auto py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-1 file:text-sm file:font-medium file:text-primary-dark',
+              leadingIcon && 'pl-9',
+              trailingSlot && 'pr-10',
               className,
             )}
             {...props}
           />
-          {trailingIcon ? (
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted">
-              {trailingIcon}
+          {trailingSlot ? (
+            <span className="absolute top-1/2 right-1 -translate-y-1/2">
+              {trailingSlot}
             </span>
           ) : null}
         </div>
-        {error || helperText ? (
-          <p
-            id={descriptionId}
-            className={cn('text-sm text-muted', error && 'text-primary-dark')}
-          >
-            {error ?? helperText}
-          </p>
-        ) : null}
-      </div>
+      </Field>
     );
   },
 );

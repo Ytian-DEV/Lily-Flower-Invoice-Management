@@ -6,16 +6,16 @@ import {
   getInvoicePaymentStatus,
   type InvoicePaymentStatus,
 } from '@/features/orders/utils/paymentStatus';
-import {
-  formatOrderCurrency,
-  formatOrderDate,
-} from '@/features/orders/utils/orderFormatters';
+import { formatCurrency } from '@/utils/formatCurrency';
+import { formatPhone } from '@/utils/formatPhone';
+import { formatDate } from '@/utils/formatDate';
 import type {
   InvoiceAddonWithAddon,
   InvoiceItemWithProduct,
   InvoicePreviewPayment,
 } from '@/services/repositories/invoicesRepository';
-import type { PaymentMethod, TableRow } from '@/types/database';
+import { paymentMethodLabels } from '@/lib/labels';
+import type { TableRow } from '@/types/database';
 import { cn } from '@/utils/cn';
 
 interface InvoiceDocumentProps {
@@ -26,13 +26,6 @@ interface InvoiceDocumentProps {
   payments?: InvoicePreviewPayment[];
   settings?: TableRow<'settings'> | null;
 }
-
-const paymentMethodLabels: Record<PaymentMethod, string> = {
-  cash: 'Cash',
-  gcash: 'GCash',
-  bank_transfer: 'Bank Transfer',
-  maribank: 'MariBank',
-};
 
 const paymentStatusLabels: Record<InvoicePaymentStatus, string> = {
   paid: 'Paid in full',
@@ -60,7 +53,9 @@ function BusinessLogo() {
 
   return (
     <img
-      src="/images/lily-logo.png"
+      src="/images/lily-logo-256.png"
+      width={64}
+      height={64}
       alt=""
       className="size-16 shrink-0 object-contain"
       onError={() => setIsHidden(true)}
@@ -109,8 +104,10 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
     const businessName = settings?.business_name ?? fallbackBusiness.name;
     const businessAddress = settings?.business_address ?? fallbackBusiness.address;
     const phoneNumbers =
-      [settings?.phone_1, settings?.phone_2].filter(Boolean).join(' / ') ||
-      fallbackBusiness.phones;
+      [settings?.phone_1, settings?.phone_2]
+        .filter(Boolean)
+        .map(formatPhone)
+        .join(' / ') || fallbackBusiness.phones;
     const facebook = settings ? settings.facebook : fallbackBusiness.facebook;
     const customerName = order.customer_name || customer?.full_name || 'Walk-in customer';
     const customerPhone = order.customer_phone ?? customer?.phone_number ?? null;
@@ -153,7 +150,11 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                 {order.invoice_number}
               </dd>
               <dt className="text-slate-500">Date issued</dt>
-              <dd className="tabular-nums">{formatOrderDate(order.created_at)}</dd>
+              <dd className="tabular-nums">
+                {order.created_at
+                  ? formatDate(order.created_at, 'MMM d, yyyy')
+                  : 'Not scheduled'}
+              </dd>
             </dl>
           </div>
         </header>
@@ -161,12 +162,18 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
         <dl className="mt-10 grid gap-6 border-y border-slate-200 py-6 sm:grid-cols-3">
           <Field label="Billed to">
             <p className="font-semibold">{customerName}</p>
-            {customerPhone ? <p className="text-slate-600">{customerPhone}</p> : null}
+            {customerPhone ? (
+              <p className="text-slate-600">{formatPhone(customerPhone)}</p>
+            ) : null}
           </Field>
           <Field label="Deliver to">
             {deliveryAddress ?? <span className="text-slate-500">For pickup</span>}
           </Field>
-          <Field label="Delivery date">{formatOrderDate(order.delivery_date)}</Field>
+          <Field label="Delivery date">
+            {order.delivery_date
+              ? formatDate(order.delivery_date, 'MMM d, yyyy')
+              : 'Not scheduled'}
+          </Field>
         </dl>
 
         <table className="mt-8 w-full text-sm">
@@ -190,10 +197,10 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                 </td>
                 <td className="py-3 pr-4 text-right tabular-nums">{item.quantity}</td>
                 <td className="py-3 pr-4 text-right tabular-nums">
-                  {formatOrderCurrency(item.unit_price)}
+                  {formatCurrency(item.unit_price)}
                 </td>
                 <td className="py-3 text-right tabular-nums">
-                  {formatOrderCurrency(item.total_price)}
+                  {formatCurrency(item.total_price)}
                 </td>
               </tr>
             ))}
@@ -205,10 +212,10 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                 <td className="py-3 pr-4 text-slate-400">—</td>
                 <td className="py-3 pr-4 text-right tabular-nums">{addon.quantity}</td>
                 <td className="py-3 pr-4 text-right tabular-nums">
-                  {formatOrderCurrency(addon.unit_price)}
+                  {formatCurrency(addon.unit_price)}
                 </td>
                 <td className="py-3 text-right tabular-nums">
-                  {formatOrderCurrency(addon.total_price)}
+                  {formatCurrency(addon.total_price)}
                 </td>
               </tr>
             ))}
@@ -229,23 +236,23 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
 
           <div>
             <dl>
-              <TotalRow label="Subtotal" value={formatOrderCurrency(order.subtotal)} />
+              <TotalRow label="Subtotal" value={formatCurrency(order.subtotal)} />
               {order.discount_amount > 0 ? (
                 <TotalRow
                   label={`Discount (${formatPercent(order.discount_percent)})`}
-                  value={`-${formatOrderCurrency(order.discount_amount)}`}
+                  value={`-${formatCurrency(order.discount_amount)}`}
                 />
               ) : null}
               {order.delivery_fee > 0 ? (
                 <TotalRow
                   label="Delivery fee"
-                  value={formatOrderCurrency(order.delivery_fee)}
+                  value={formatCurrency(order.delivery_fee)}
                 />
               ) : null}
               <div className="mt-1 border-t border-slate-300 pt-1">
                 <TotalRow
                   label="Total"
-                  value={formatOrderCurrency(order.total_amount)}
+                  value={formatCurrency(order.total_amount)}
                   emphasis
                 />
               </div>
@@ -258,8 +265,11 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                     key={payment.id}
                     label={
                       <>
-                        Paid {formatOrderDate(payment.payment_date)} ·{' '}
-                        {paymentMethodLabels[payment.payment_method]}
+                        Paid{' '}
+                        {payment.payment_date
+                          ? formatDate(payment.payment_date, 'MMM d, yyyy')
+                          : 'Not scheduled'}{' '}
+                        · {paymentMethodLabels[payment.payment_method]}
                         {payment.reference_number ? (
                           <span className="block text-xs text-slate-500">
                             Ref. {payment.reference_number}
@@ -267,7 +277,7 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
                         ) : null}
                       </>
                     }
-                    value={`-${formatOrderCurrency(payment.amount)}`}
+                    value={`-${formatCurrency(payment.amount)}`}
                   />
                 ))}
               </dl>
@@ -276,13 +286,13 @@ export const InvoiceDocument = forwardRef<HTMLElement, InvoiceDocumentProps>(
             <div className="mt-3 flex items-baseline justify-between gap-6 rounded-md bg-accent/50 px-3 py-3">
               <span className="font-semibold text-slate-950">Balance due</span>
               <span className="text-lg font-semibold tabular-nums text-slate-950">
-                {formatOrderCurrency(order.remaining_balance)}
+                {formatCurrency(order.remaining_balance)}
               </span>
             </div>
             <p className="mt-2 text-right text-xs font-medium uppercase tracking-wider text-slate-500">
               {paymentStatusLabels[paymentStatus]}
               {paymentStatus === 'partially-paid'
-                ? ` · ${formatOrderCurrency(paidAmount)} received`
+                ? ` · ${formatCurrency(paidAmount)} received`
                 : null}
             </p>
           </div>

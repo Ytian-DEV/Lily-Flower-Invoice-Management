@@ -1,17 +1,23 @@
 {
-  "name": "Lily Flowers - Baybay City Branch",
+  "name": "Lily Flowers - Baybay City",
   "short_name": "Lily Flowers",
-  "description": "Internal florist invoice and payment management system.",
-  "start_url": "/",
+  "description": "Orders, invoices and payments for Lily Flowers.",
+  "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#fff7fb",
-  "theme_color": "#ec4899",
+  "background_color": "#f8f6f5",
+  "theme_color": "#d6246e",
   "icons": [
     {
-      "src": "/images/lily-logo.png",
+      "src": "/images/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
