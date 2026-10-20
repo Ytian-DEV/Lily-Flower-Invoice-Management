@@ -1,76 +1,46 @@
-import { forwardRef, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, useId, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
+import { Field } from '@/components/ui/Field';
+import { controlClasses, fieldDescriptionId } from '@/components/ui/styles';
 import { cn } from '@/utils/cn';
 
 export interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
-  helperText?: string;
-  showCharacterCount?: boolean;
+  helperText?: ReactNode;
+  containerClassName?: string;
 }
 
 export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
   (
-    {
-      className,
-      error,
-      helperText,
-      id,
-      label,
-      maxLength,
-      required,
-      showCharacterCount = false,
-      value,
-      ...props
-    },
+    { className, containerClassName, error, helperText, id, label, required, ...props },
     ref,
   ) => {
-    const textAreaId = id ?? props.name;
-    const descriptionId = textAreaId ? `${textAreaId}-description` : undefined;
-    const count = typeof value === 'string' ? value.length : 0;
+    const generatedId = useId();
+    const textAreaId = id ?? generatedId;
 
     return (
-      <div className="grid gap-2">
-        {label ? (
-          <label htmlFor={textAreaId} className="text-sm font-semibold text-text">
-            {label}
-            {required ? <span className="text-primary"> *</span> : null}
-          </label>
-        ) : null}
+      <Field
+        id={textAreaId}
+        label={label}
+        required={required}
+        error={error}
+        helperText={helperText}
+        className={containerClassName}
+      >
         <textarea
           ref={ref}
           id={textAreaId}
           required={required}
-          maxLength={maxLength}
-          value={value}
+          rows={3}
           aria-invalid={error ? true : undefined}
-          aria-describedby={descriptionId}
-          className={cn(
-            'min-h-32 w-full resize-y rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text transition placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:bg-accent/40 disabled:text-muted',
-            error &&
-              'border-primary-dark focus:border-primary-dark focus:ring-primary-dark/20',
-            className,
-          )}
+          aria-describedby={
+            error || helperText ? fieldDescriptionId(textAreaId) : undefined
+          }
+          className={cn(controlClasses, 'min-h-20 resize-y px-3 py-2', className)}
           {...props}
         />
-        <div className="flex items-start justify-between gap-3">
-          {error || helperText ? (
-            <p
-              id={descriptionId}
-              className={cn('text-sm text-muted', error && 'text-primary-dark')}
-            >
-              {error ?? helperText}
-            </p>
-          ) : (
-            <span />
-          )}
-          {showCharacterCount && maxLength ? (
-            <p className="text-sm text-muted">
-              {count}/{maxLength}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      </Field>
     );
   },
 );

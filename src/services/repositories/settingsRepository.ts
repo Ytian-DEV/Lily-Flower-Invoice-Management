@@ -16,13 +16,4 @@ export const settingsRepository = {
       .limit(1)
       .maybeSingle();
   },
-  async upsertActive(payload: TableInsert<'settings'>) {
-    const { data } = await this.getActive();
-
-    if (data) {
-      return this.update(data.id, payload);
-    }
-
-    return this.create(payload);
-  },
 };

@@ -1,4 +1,4 @@
-import type { Addon, ProductViewModel } from '@/features/products';
+import type { Addon, Product } from '@/features/catalog/api';
 import type {
   InvoiceStatus,
   PaymentMethod,
@@ -46,7 +46,7 @@ export interface PricingSummary {
 
 export interface SmartStemSuggestion {
   requestedStems: number;
-  product: ProductViewModel;
+  product: Product;
   extraStemAddon: Addon | null;
   extraStemsNeeded: number;
 }

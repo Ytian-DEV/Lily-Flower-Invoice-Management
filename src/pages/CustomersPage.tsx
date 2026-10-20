@@ -1,302 +1,373 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { MapPin, Pencil, Phone, Trash2, UserPlus, Users } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router';
 
+import { PageContainer } from '@/components/layout/PageContainer';
 import {
-  Alert,
-  Breadcrumbs,
   Button,
-  Checkbox,
-  FilterPanel,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  ErrorState,
   Modal,
-  type DataTableColumn,
+  OrderStatusBadge,
+  PageHeader,
+  Pagination,
+  SearchInput,
+  Skeleton,
+  Tabs,
   useToast,
+  type DataTableColumn,
 } from '@/components/ui';
+import { useAuth } from '@/features/auth';
 import {
-  ActionMenu,
-  CrudEmptyState,
-  CrudPageContainer,
-  CrudTable,
-  CrudToolbar,
-  DeleteConfirmationDialog,
-} from '@/features/crud';
-import {
-  CustomerDetails,
-  CustomerForm,
-  useCustomerManagement,
-  type Customer,
-  type CustomerDialogMode,
-} from '@/features/customers';
-import { formatCustomerDate } from '@/features/customers/utils/customerFormatters';
-import { customersRepository } from '@/services/repositories/customersRepository';
-import type { CustomerFormValues } from '@/validation';
+  CUSTOMERS_PAGE_SIZE,
+  useCustomerOrders,
+  useCustomers,
+  useDeleteCustomer,
+  type CustomerFilters,
+  type CustomerSummary,
+} from '@/features/customers/api';
+import { CustomerFormModal } from '@/features/customers/components/CustomerForm';
+import { formatCurrency } from '@/utils/formatCurrency';
+import { formatPhone } from '@/utils/formatPhone';
+import { formatDate } from '@/utils/formatDate';
 
-const pageSize = 10;
+const segments = [
+  { value: 'all', label: 'All' },
+  { value: 'balance', label: 'With balance' },
+  { value: 'recent', label: 'New this month' },
+] as const;
+
+const columns: DataTableColumn<CustomerSummary>[] = [
+  {
+    id: 'name',
+    header: 'Customer',
+    cell: (row) => (
+      <div className="max-w-64">
+        <p className="truncate font-medium">{row.full_name}</p>
+        <p className="truncate text-xs text-muted">
+          {row.delivery_address || 'No address'}
+        </p>
+      </div>
+    ),
+  },
+  {
+    id: 'phone',
+    header: 'Phone',
+    hideBelow: 'sm',
+    cell: (row) => <span className="tabular-nums">{formatPhone(row.phone_number)}</span>,
+  },
+  {
+    id: 'orders',
+    header: 'Orders',
+    align: 'right',
+    hideBelow: 'md',
+    cell: (row) => <span className="tabular-nums">{row.order_count}</span>,
+  },
+  {
+    id: 'last',
+    header: 'Last order',
+    hideBelow: 'lg',
+    cell: (row) =>
+      row.last_order_at ? (
+        formatDate(row.last_order_at, 'MMM d, yyyy')
+      ) : (
+        <span className="text-subtle">—</span>
+      ),
+  },
+  {
+    id: 'balance',
+    header: 'Balance',
+    align: 'right',
+    cell: (row) =>
+      row.outstanding_balance > 0 ? (
+        <span className="font-medium text-warning-text tabular-nums">
+          {formatCurrency(row.outstanding_balance)}
+        </span>
+      ) : (
+        <span className="text-subtle">—</span>
+      ),
+  },
+];
+
+function CustomerPanel({
+  customer,
+  onClose,
+  onDelete,
+  onEdit,
+}: {
+  customer: CustomerSummary | null;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete?: () => void;
+}) {
+  const orders = useCustomerOrders(customer?.id ?? null);
+
+  return (
+    <Modal
+      isOpen={Boolean(customer)}
+      onClose={onClose}
+      title={customer?.full_name ?? ''}
+      description={
+        customer
+          ? `Customer since ${formatDate(customer.created_at, 'MMMM yyyy')} · ${customer.order_count} ${customer.order_count === 1 ? 'order' : 'orders'}`
+          : undefined
+      }
+      size="lg"
+      footer={
+        <>
+          {onDelete ? (
+            <Button
+              variant="ghost"
+              className="text-danger-text sm:mr-auto"
+              leftIcon={<Trash2 aria-hidden="true" className="size-4" />}
+              onClick={onDelete}
+            >
+              Delete
+            </Button>
+          ) : null}
+          <Button
+            variant="secondary"
+            leftIcon={<Pencil aria-hidden="true" className="size-4" />}
+            onClick={onEdit}
+          >
+            Edit
+          </Button>
+        </>
+      }
+    >
+      {customer ? (
+        <div className="grid gap-5">
+          <div className="grid gap-2 text-sm">
+            <a
+              href={`tel:${customer.phone_number}`}
+              className="inline-flex items-center gap-2 text-text hover:text-primary-dark"
+            >
+              <Phone aria-hidden="true" className="size-4 text-subtle" />
+              <span className="tabular-nums">{formatPhone(customer.phone_number)}</span>
+            </a>
+            <p className="flex gap-2 text-text">
+              <MapPin aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-subtle" />
+              {customer.delivery_address || 'No address saved'}
+            </p>
+            {customer.notes ? (
+              <p className="rounded-lg bg-surface-muted px-3 py-2 whitespace-pre-line text-muted">
+                {customer.notes}
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-baseline justify-between">
+              <h3 className="text-sm font-semibold text-text">Orders</h3>
+              {customer.outstanding_balance > 0 ? (
+                <p className="text-sm text-warning-text">
+                  {formatCurrency(customer.outstanding_balance)} to collect
+                </p>
+              ) : null}
+            </div>
+            {orders.isPending ? (
+              <Skeleton className="h-24" />
+            ) : orders.data?.length ? (
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {orders.data.map((order) => (
+                  <li key={order.id}>
+                    <Link
+                      to={`/orders/${order.id}`}
+                      className="flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-surface-muted"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium tabular-nums">
+                          {order.invoice_number}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {formatDate(order.created_at, 'MMM d, yyyy')}
+                        </span>
+                      </span>
+                      <OrderStatusBadge status={order.status} />
+                      <span className="w-24 text-right tabular-nums">
+                        {formatCurrency(order.total_amount)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted">No orders yet.</p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </Modal>
+  );
+}
 
 export function CustomersPage() {
   const { showToast } = useToast();
-  const {
-    customers,
-    errorMessage,
-    filters,
-    isLoading,
-    refresh,
-    resetFilters,
-    searchQuery,
-    setFilters,
-    setSearchQuery,
-  } = useCustomerManagement();
-  const [page, setPage] = useState(1);
-  const [dialogMode, setDialogMode] = useState<CustomerDialogMode | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const pageCount = Math.max(1, Math.ceil(customers.length / pageSize));
-  const paginatedCustomers = useMemo(
-    () => customers.slice((page - 1) * pageSize, page * pageSize),
-    [customers, page],
-  );
-
-  const columns: DataTableColumn<Customer>[] = [
-    { id: 'full_name', header: 'Customer Name', accessor: 'full_name' },
-    { id: 'phone_number', header: 'Phone Number', accessor: 'phone_number' },
-    {
-      id: 'delivery_address',
-      header: 'Delivery Address',
-      cell: (row) => row.delivery_address || 'No address',
-    },
-    { id: 'total_orders', header: 'Total Orders', cell: () => '0', align: 'right' },
-    {
-      id: 'balance',
-      header: 'Outstanding Balance',
-      cell: () => 'PHP 0.00',
-      align: 'right',
-    },
-    { id: 'last_order', header: 'Last Order Date', cell: () => 'Not available' },
-    {
-      id: 'created_at',
-      header: 'Created At',
-      cell: (row) => formatCustomerDate(row.created_at),
-    },
-  ];
-
-  const openCreateDialog = () => {
-    setSelectedCustomer(null);
-    setDialogMode('create');
+  const { isAdmin } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const filters: CustomerFilters = {
+    search: params.get('q') ?? '',
+    segment: (params.get('segment') as CustomerFilters['segment']) ?? 'all',
+    page: Math.max(1, Number(params.get('page')) || 1),
   };
+  const customers = useCustomers(filters);
+  const deleteCustomer = useDeleteCustomer();
+  const [selected, setSelected] = useState<CustomerSummary | null>(null);
+  const [editing, setEditing] = useState<CustomerSummary | null | 'new'>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerSummary | null>(null);
 
-  const closeDialog = () => {
-    setDialogMode(null);
-    setSelectedCustomer(null);
-  };
-
-  const handleCustomerSubmit = async (values: CustomerFormValues) => {
-    setIsSubmitting(true);
-    const result = selectedCustomer
-      ? await customersRepository.update(selectedCustomer.id, values)
-      : await customersRepository.create(values);
-    setIsSubmitting(false);
-
-    if (result.error) {
-      showToast({
-        variant: 'error',
-        title: 'Customer save failed',
-        description: result.error.message,
-      });
-      return;
-    }
-
-    showToast({
-      variant: 'success',
-      title: selectedCustomer ? 'Customer updated' : 'Customer created',
-    });
-    closeDialog();
-    await refresh();
-  };
+  const updateFilter = (key: string, value: string, defaultValue: string) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value === defaultValue) next.delete(key);
+        else next.set(key, value);
+        if (key !== 'page') next.delete('page');
+        return next;
+      },
+      { replace: key !== 'page' },
+    );
 
   const confirmDelete = async () => {
-    if (!deleteTarget) {
-      return;
-    }
+    if (!deleteTarget) return;
 
-    setIsSubmitting(true);
-    const invoiceCount = await customersRepository.countInvoices(deleteTarget.id);
-
-    if (invoiceCount.error) {
-      setIsSubmitting(false);
+    try {
+      await deleteCustomer.mutateAsync(deleteTarget.id);
+      showToast({ variant: 'success', title: `${deleteTarget.full_name} deleted` });
+      setSelected(null);
+    } catch (error) {
       showToast({
         variant: 'error',
-        title: 'Delete check failed',
-        description: invoiceCount.error.message,
+        title: 'Customer was not deleted',
+        description: error instanceof Error ? error.message : undefined,
       });
-      return;
+    } finally {
+      setDeleteTarget(null);
     }
-
-    if ((invoiceCount.count ?? 0) > 0) {
-      setIsSubmitting(false);
-      showToast({
-        variant: 'warning',
-        title: 'Cannot delete customer',
-        description:
-          'Cannot delete customer because invoices are associated with this record.',
-      });
-      return;
-    }
-
-    const result = await customersRepository.remove(deleteTarget.id);
-    setIsSubmitting(false);
-
-    if (result.error) {
-      showToast({
-        variant: 'error',
-        title: 'Delete failed',
-        description: result.error.message,
-      });
-      return;
-    }
-
-    showToast({ variant: 'success', title: 'Customer deleted' });
-    setDeleteTarget(null);
-    await refresh();
   };
 
-  const renderActions = (row: Customer) => (
-    <ActionMenu
-      onView={() => {
-        setSelectedCustomer(row);
-        setDialogMode('details');
-      }}
-      onEdit={() => {
-        setSelectedCustomer(row);
-        setDialogMode('edit');
-      }}
-      onDelete={() => setDeleteTarget(row)}
-    />
-  );
-
   return (
-    <CrudPageContainer
-      title="Customers"
-      subtitle="Manage reusable customer records for future invoices, payments, and history."
-      breadcrumbs={
-        <Breadcrumbs
-          items={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Customers' }]}
-        />
-      }
-      primaryAction={<Button onClick={openCreateDialog}>Create Customer</Button>}
-      toolbarSlot={
-        <CrudToolbar
-          searchValue={searchQuery}
-          searchPlaceholder="Search customers, phones, or addresses..."
-          onSearchChange={(value) => {
-            setPage(1);
-            setSearchQuery(value);
-          }}
-          onRefresh={refresh}
-          onCreate={openCreateDialog}
-          createLabel="Create Customer"
-        />
-      }
-      filterSlot={
-        <FilterPanel
-          title="Customer Filters"
-          onApply={() => setPage(1)}
-          onReset={resetFilters}
-        >
-          <Checkbox
-            label="Has Outstanding Balance"
-            helperText="Future-ready placeholder"
-            checked={filters.hasOutstandingBalance}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                hasOutstandingBalance: event.target.checked,
-              }))
-            }
-            disabled
-          />
-          <Checkbox
-            label="Has Orders"
-            helperText="Future-ready placeholder"
-            checked={filters.hasOrders}
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, hasOrders: event.target.checked }))
-            }
-            disabled
-          />
-          <Checkbox
-            label="Recently Added"
-            checked={filters.recentlyAdded}
-            onChange={(event) => {
-              setPage(1);
-              setFilters((current) => ({
-                ...current,
-                recentlyAdded: event.target.checked,
-              }));
-            }}
-          />
-        </FilterPanel>
-      }
-      tableSlot={
-        <div className="space-y-4">
-          {errorMessage ? (
-            <Alert variant="error" title="Customer error" description={errorMessage} />
-          ) : null}
-          <CrudTable
-            columns={columns}
-            data={paginatedCustomers}
-            getRowId={(row) => row.id}
-            isLoading={isLoading}
-            emptyState={
-              <CrudEmptyState
-                title="No customers yet."
-                description="Add customers to reuse their contact and delivery details later."
-                actionLabel="Add Customer"
-                onAction={openCreateDialog}
-              />
-            }
-            actions={renderActions}
-            page={page}
-            pageCount={pageCount}
-            pageSize={pageSize}
-            onPageChange={setPage}
-          />
-        </div>
-      }
-      dialogSlot={
-        <>
-          <Modal
-            isOpen={dialogMode !== null}
-            onClose={closeDialog}
-            title={
-              dialogMode === 'details'
-                ? 'Customer Details'
-                : selectedCustomer
-                  ? 'Edit Customer'
-                  : 'Create Customer'
-            }
-            width="xl"
+    <PageContainer>
+      <PageHeader
+        title="Customers"
+        description={
+          customers.data
+            ? `${customers.data.total} ${customers.data.total === 1 ? 'customer' : 'customers'}`
+            : ' '
+        }
+        actions={
+          <Button
+            leftIcon={<UserPlus aria-hidden="true" className="size-4" />}
+            onClick={() => setEditing('new')}
           >
-            {dialogMode === 'details' && selectedCustomer ? (
-              <CustomerDetails customer={selectedCustomer} />
-            ) : null}
-            {dialogMode !== 'details' ? (
-              <CustomerForm
-                customer={selectedCustomer}
-                isSubmitting={isSubmitting}
-                onCancel={closeDialog}
-                onSubmit={handleCustomerSubmit}
+            Add customer
+          </Button>
+        }
+      />
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <Tabs
+          label="Customer groups"
+          items={segments.map((segment) => ({ ...segment }))}
+          value={filters.segment}
+          onChange={(value) => updateFilter('segment', value, 'all')}
+          className="border-b-0"
+        />
+        <SearchInput
+          value={filters.search}
+          onChange={(value) => updateFilter('q', value, '')}
+          placeholder="Name, phone, or address"
+          label="Search customers"
+        />
+      </div>
+
+      {customers.isError ? (
+        <ErrorState
+          description={customers.error.message}
+          onRetry={() => customers.refetch()}
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={customers.data?.rows ?? []}
+          getRowId={(row) => row.id}
+          isLoading={customers.isPending}
+          onRowClick={setSelected}
+          rowLabel={(row) => `Open ${row.full_name}`}
+          renderMobileRow={(row) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-text">{row.full_name}</p>
+                <p className="text-xs text-muted tabular-nums">
+                  {formatPhone(row.phone_number)} · {row.order_count}{' '}
+                  {row.order_count === 1 ? 'order' : 'orders'}
+                </p>
+              </div>
+              {row.outstanding_balance > 0 ? (
+                <span className="text-sm whitespace-nowrap text-warning-text tabular-nums">
+                  {formatCurrency(row.outstanding_balance)}
+                </span>
+              ) : null}
+            </div>
+          )}
+          empty={
+            filters.search || filters.segment !== 'all' ? (
+              <EmptyState
+                title="No customers match"
+                description="Try another name or phone number."
               />
-            ) : null}
-          </Modal>
-          <DeleteConfirmationDialog
-            isOpen={Boolean(deleteTarget)}
-            entityLabel={deleteTarget?.full_name ?? 'customer'}
-            isLoading={isSubmitting}
-            onCancel={() => setDeleteTarget(null)}
-            onConfirm={confirmDelete}
-          />
-        </>
-      }
-    />
+            ) : (
+              <EmptyState
+                icon={<Users aria-hidden="true" />}
+                title="No customers yet"
+                description="Save regulars here so their details fill in automatically on new orders."
+                action={<Button onClick={() => setEditing('new')}>Add customer</Button>}
+              />
+            )
+          }
+          footer={
+            <Pagination
+              page={filters.page}
+              pageSize={CUSTOMERS_PAGE_SIZE}
+              total={customers.data?.total ?? 0}
+              onPageChange={(page) => updateFilter('page', String(page), '1')}
+            />
+          }
+        />
+      )}
+
+      <CustomerPanel
+        customer={selected}
+        onClose={() => setSelected(null)}
+        onEdit={() => {
+          setEditing(selected);
+          setSelected(null);
+        }}
+        onDelete={
+          isAdmin && selected && selected.order_count === 0
+            ? () => setDeleteTarget(selected)
+            : undefined
+        }
+      />
+
+      <CustomerFormModal
+        isOpen={editing !== null}
+        customer={editing === 'new' ? null : editing}
+        onClose={() => setEditing(null)}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        title={`Delete ${deleteTarget?.full_name ?? 'customer'}?`}
+        description="This customer has no orders. Their saved details will be removed."
+        confirmLabel="Delete customer"
+        isDanger
+        isLoading={deleteCustomer.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+    </PageContainer>
   );
 }

@@ -1,79 +1,47 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router';
 
+import { AppShell } from '@/components/layout/AppShell';
+import { LoadingScreen } from '@/components/ui';
 import { ProtectedRoute } from '@/features/auth';
-import { AppLayout } from '@/layouts/AppLayout';
-import { LoadingPage } from '@/pages/LoadingPage';
+import { ErrorPage } from '@/pages/ErrorPage';
+import { RedirectWithId } from '@/routes/RedirectWithId';
 
-const LoginPage = lazy(() =>
-  import('@/features/auth/pages/LoginPage').then((module) => ({
-    default: module.LoginPage,
-  })),
-);
+/** Route-level code splitting: each page is its own chunk, loaded on first visit. */
+function page<TModule extends Record<string, unknown>>(
+  load: () => Promise<TModule>,
+  exportName: keyof TModule,
+) {
+  return lazy(async () => ({
+    default: (await load())[exportName] as ComponentType,
+  }));
+}
 
-const DashboardPage = lazy(() =>
-  import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
-);
-const OrdersPage = lazy(() =>
-  import('@/pages/OrdersPage').then((module) => ({ default: module.OrdersPage })),
-);
-const OrderFormPage = lazy(() =>
-  import('@/pages/OrderFormPage').then((module) => ({ default: module.OrderFormPage })),
-);
-const OrderDetailPage = lazy(() =>
-  import('@/pages/OrderDetailPage').then((module) => ({
-    default: module.OrderDetailPage,
-  })),
-);
-const OrderPreviewPage = lazy(() =>
-  import('@/pages/OrderPreviewPage').then((module) => ({
-    default: module.OrderPreviewPage,
-  })),
-);
-const InvoiceHistoryPage = lazy(() =>
-  import('@/pages/InvoiceHistoryPage').then((module) => ({
-    default: module.InvoiceHistoryPage,
-  })),
-);
-const CustomersPage = lazy(() =>
-  import('@/pages/CustomersPage').then((module) => ({ default: module.CustomersPage })),
-);
-const ProductsPage = lazy(() =>
-  import('@/pages/ProductsPage').then((module) => ({ default: module.ProductsPage })),
-);
-const PaymentsPage = lazy(() =>
-  import('@/pages/PaymentsPage').then((module) => ({ default: module.PaymentsPage })),
-);
-const SettingsPage = lazy(() =>
-  import('@/pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
-);
-const NotFoundPage = lazy(() =>
-  import('@/pages/NotFoundPage').then((module) => ({
-    default: module.NotFoundPage,
-  })),
-);
-const ErrorPage = lazy(() =>
-  import('@/pages/ErrorPage').then((module) => ({
-    default: module.ErrorPage,
-  })),
-);
+const LoginPage = page(() => import('@/features/auth/pages/LoginPage'), 'LoginPage');
+const DashboardPage = page(() => import('@/pages/DashboardPage'), 'DashboardPage');
+const OrdersPage = page(() => import('@/pages/OrdersPage'), 'OrdersPage');
+const OrderFormPage = page(() => import('@/pages/OrderFormPage'), 'OrderFormPage');
+const OrderDetailPage = page(() => import('@/pages/OrderDetailPage'), 'OrderDetailPage');
+const InvoicePage = page(() => import('@/pages/InvoicePage'), 'InvoicePage');
+const PaymentsPage = page(() => import('@/pages/PaymentsPage'), 'PaymentsPage');
+const CustomersPage = page(() => import('@/pages/CustomersPage'), 'CustomersPage');
+const CatalogPage = page(() => import('@/pages/CatalogPage'), 'CatalogPage');
+const SettingsPage = page(() => import('@/pages/SettingsPage'), 'SettingsPage');
+const NotFoundPage = page(() => import('@/pages/NotFoundPage'), 'NotFoundPage');
 
-const withSuspense = (element: React.ReactNode) => (
-  <Suspense fallback={<LoadingPage />}>{element}</Suspense>
+const withSuspense = (element: ReactNode) => (
+  <Suspense fallback={<LoadingScreen />}>{element}</Suspense>
 );
 
 export const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: withSuspense(<LoginPage />),
-  },
+  { path: '/login', element: withSuspense(<LoginPage />) },
   {
     element: <ProtectedRoute />,
-    errorElement: withSuspense(<ErrorPage />),
+    errorElement: <ErrorPage />,
     children: [
       {
         path: '/',
-        element: <AppLayout />,
+        element: <AppShell />,
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard', element: withSuspense(<DashboardPage />) },
@@ -81,16 +49,26 @@ export const router = createBrowserRouter([
           { path: 'orders/new', element: withSuspense(<OrderFormPage />) },
           { path: 'orders/:id', element: withSuspense(<OrderDetailPage />) },
           { path: 'orders/:id/edit', element: withSuspense(<OrderFormPage />) },
-          { path: 'orders/:id/preview', element: withSuspense(<OrderPreviewPage />) },
+          { path: 'orders/:id/invoice', element: withSuspense(<InvoicePage />) },
+          { path: 'payments', element: withSuspense(<PaymentsPage />) },
+          { path: 'customers', element: withSuspense(<CustomersPage />) },
+          { path: 'catalog', element: withSuspense(<CatalogPage />) },
+          { path: 'settings', element: withSuspense(<SettingsPage />) },
+
+          {
+            path: 'orders/:id/preview',
+            element: <RedirectWithId to={(id) => `/orders/${id}/invoice`} />,
+          },
+          {
+            path: 'payments/:id',
+            element: <RedirectWithId to={(id) => `/orders/${id}`} />,
+          },
+          { path: 'history', element: <Navigate to="/orders" replace /> },
           { path: 'invoices', element: <Navigate to="/orders" replace /> },
           { path: 'invoices/new', element: <Navigate to="/orders/new" replace /> },
-          { path: 'invoices/history', element: <Navigate to="/history" replace /> },
-          { path: 'history', element: withSuspense(<InvoiceHistoryPage />) },
-          { path: 'customers', element: withSuspense(<CustomersPage />) },
-          { path: 'products', element: withSuspense(<ProductsPage />) },
-          { path: 'payments', element: withSuspense(<PaymentsPage />) },
-          { path: 'payments/:invoiceId', element: withSuspense(<PaymentsPage />) },
-          { path: 'settings', element: withSuspense(<SettingsPage />) },
+          { path: 'invoices/history', element: <Navigate to="/orders" replace /> },
+          { path: 'products', element: <Navigate to="/catalog" replace /> },
+
           { path: '*', element: withSuspense(<NotFoundPage />) },
         ],
       },

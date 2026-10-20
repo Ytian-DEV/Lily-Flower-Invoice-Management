@@ -1,63 +1,56 @@
-import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
-import { Button } from '@/components/ui/Button';
-import { feedbackToneClasses } from '@/design-system';
 import { cn } from '@/utils/cn';
 
-export type AlertVariant = 'success' | 'warning' | 'error' | 'info' | 'neutral';
+export type AlertVariant = 'success' | 'warning' | 'error' | 'info';
+
+const variantClasses: Record<AlertVariant, string> = {
+  success: 'border-success-ring bg-success-bg text-success-text',
+  warning: 'border-warning-ring bg-warning-bg text-warning-text',
+  error: 'border-danger-ring bg-danger-bg text-danger-text',
+  info: 'border-info-ring bg-info-bg text-info-text',
+};
+
+const icons: Record<AlertVariant, ReactNode> = {
+  success: <CheckCircle2 aria-hidden="true" className="size-4" />,
+  warning: <AlertTriangle aria-hidden="true" className="size-4" />,
+  error: <AlertCircle aria-hidden="true" className="size-4" />,
+  info: <Info aria-hidden="true" className="size-4" />,
+};
 
 export interface AlertProps {
   variant?: AlertVariant;
   title?: string;
-  description?: string;
-  icon?: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
-  isClosable?: boolean;
-  onClose?: () => void;
+  className?: string;
 }
-
-const variantClasses: Record<AlertVariant, string> = {
-  success: feedbackToneClasses.success,
-  warning: feedbackToneClasses.warning,
-  error: feedbackToneClasses.error,
-  info: 'border-border bg-accent text-primary-dark',
-  neutral: 'border-border bg-surface text-text',
-};
-
-const icons: Record<AlertVariant, ReactNode> = {
-  success: <CheckCircle2 aria-hidden="true" className="size-5" />,
-  warning: <AlertTriangle aria-hidden="true" className="size-5" />,
-  error: <AlertCircle aria-hidden="true" className="size-5" />,
-  info: <Info aria-hidden="true" className="size-5" />,
-  neutral: <Info aria-hidden="true" className="size-5" />,
-};
 
 export function Alert({
   actions,
+  className,
   description,
-  icon,
-  isClosable = false,
-  onClose,
   title,
-  variant = 'neutral',
+  variant = 'info',
 }: AlertProps) {
   return (
     <div
-      className={cn('flex gap-3 rounded-xl border p-4', variantClasses[variant])}
-      role="status"
+      className={cn(
+        'flex gap-3 rounded-lg border px-4 py-3',
+        variantClasses[variant],
+        className,
+      )}
+      role={variant === 'error' ? 'alert' : 'status'}
     >
-      <span className="mt-0.5 shrink-0">{icon ?? icons[variant]}</span>
-      <div className="min-w-0 flex-1">
-        {title ? <p className="font-semibold">{title}</p> : null}
-        {description ? <p className="mt-1 text-sm opacity-85">{description}</p> : null}
-        {actions ? <div className="mt-3">{actions}</div> : null}
+      <span className="mt-0.5 shrink-0">{icons[variant]}</span>
+      <div className="min-w-0 flex-1 text-sm">
+        {title ? <p className="font-medium">{title}</p> : null}
+        {description ? (
+          <div className={cn(title && 'mt-0.5', 'opacity-90')}>{description}</div>
+        ) : null}
       </div>
-      {isClosable ? (
-        <Button variant="ghost" size="sm" aria-label="Close alert" onClick={onClose}>
-          <X aria-hidden="true" className="size-4" />
-        </Button>
-      ) : null}
+      {actions ? <div className="shrink-0 self-center">{actions}</div> : null}
     </div>
   );
 }

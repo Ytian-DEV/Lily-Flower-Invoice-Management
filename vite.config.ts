@@ -6,11 +6,14 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    target: 'es2022',
+    // Vendor code changes rarely, so it gets its own long-cached chunks.
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom', 'react-router'],
+          react: ['react', 'react-dom', 'react-dom/client', 'react-router'],
           supabase: ['@supabase/supabase-js'],
+          query: ['@tanstack/react-query'],
         },
       },
     },

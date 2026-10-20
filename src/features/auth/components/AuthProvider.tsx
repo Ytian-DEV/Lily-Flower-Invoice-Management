@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type PropsWithChildren } fro
 import type { Session, User } from '@supabase/supabase-js';
 
 import { AuthContext } from '@/features/auth/contexts/AuthContext';
+import { queryClient } from '@/lib/queryClient';
 import {
   getCurrentSession,
   getUserProfile,
@@ -94,6 +95,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) {
       throw error;
     }
+
+    // Cached shop data must not survive into another person's session.
+    queryClient.clear();
   }, []);
 
   const value = useMemo(
@@ -103,6 +107,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       profile,
       isLoading,
       isAuthenticated: Boolean(session),
+      isAdmin: profile?.role === 'admin',
       login,
       logout,
       refreshProfile,

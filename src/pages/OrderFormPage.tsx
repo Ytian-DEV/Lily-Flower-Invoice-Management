@@ -1,42 +1,41 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useMemo, useState } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
-import { Trash2 } from 'lucide-react';
+import { Minus, Plus, Sparkles, Trash2 } from 'lucide-react';
 
+import { PageContainer } from '@/components/layout/PageContainer';
 import {
   Alert,
   Button,
   Card,
-  CardBody,
+  CardHeader,
+  ErrorState,
   Input,
-  KeyValueDisplay,
-  LoadingOverlay,
   LoadingScreen,
+  PageHeader,
   Select,
-  SectionHeader,
   TextArea,
+  orderStatusLabels,
   useToast,
 } from '@/components/ui';
-import { CrudPageContainer } from '@/features/crud';
-import {
-  useOrderData,
-  calculatePricing,
-  getSmartStemSuggestion,
-  roundCurrency,
-} from '@/features/orders';
+import { useCatalog, type Product } from '@/features/catalog/api';
+import { useCreateOrder, useOrder, useUpdateOrder } from '@/features/orders/api';
+import { CustomerPicker } from '@/features/orders/components/CustomerPicker';
 import type {
   OrderAddonItem,
   OrderFormValues,
   OrderProductItem,
-} from '@/features/orders';
-import { formatOrderCurrency } from '@/features/orders/utils/orderFormatters';
-import {
-  invoicesRepository,
-  type InvoicePreviewData,
-  type OrderSavePayload,
-} from '@/services/repositories/invoicesRepository';
-import { settingsRepository } from '@/services/repositories/settingsRepository';
+} from '@/features/orders/types';
+import { calculatePricing, roundCurrency } from '@/features/orders/utils/pricing';
+import { getSmartStemSuggestion } from '@/features/orders/utils/smartStemSuggestion';
+import { useSettings } from '@/features/settings/api';
+import { paymentMethodOptions } from '@/lib/labels';
+import type { OrderSavePayload } from '@/services/repositories/invoicesRepository';
 import { removeFile, uploadReceipt } from '@/services/storage';
+import type { InvoiceStatus } from '@/types/database';
+import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/formatCurrency';
+import { manilaToday } from '@/utils/formatDate';
 import { orderFormSchema } from '@/validation/orders';
 
 const customColorValue = '__custom__';
@@ -61,33 +60,89 @@ const defaultValues: OrderFormValues = {
   status: 'pending',
 };
 
-const statusOptions = [
-  { label: 'Pending', value: 'pending' },
-  { label: 'Confirmed', value: 'confirmed' },
-  { label: 'Preparing', value: 'preparing' },
-  { label: 'Ready', value: 'ready' },
-  { label: 'Out for Delivery', value: 'out_for_delivery' },
-  { label: 'Completed', value: 'completed' },
-  { label: 'Cancelled', value: 'cancelled' },
-];
-
-const paymentMethodOptions = [
-  { label: 'Cash', value: 'cash' },
-  { label: 'GCash', value: 'gcash' },
-  { label: 'Bank Transfer', value: 'bank_transfer' },
-  { label: 'MariBank', value: 'maribank' },
-];
-
-function toQuantity(value: string) {
-  const quantity = Math.floor(Number(value));
-  return Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
-}
+const statusOptions = (Object.keys(orderStatusLabels) as InvoiceStatus[]).map(
+  (status) => ({
+    value: status,
+    label: orderStatusLabels[status],
+  }),
+);
 
 function withQuantity<TLine extends OrderProductItem | OrderAddonItem>(
   line: TLine,
   quantity: number,
 ): TLine {
-  return { ...line, quantity, totalPrice: roundCurrency(quantity * line.unitPrice) };
+  const safeQuantity = Math.max(1, Math.floor(quantity) || 1);
+  return {
+    ...line,
+    quantity: safeQuantity,
+    totalPrice: roundCurrency(safeQuantity * line.unitPrice),
+  };
+}
+
+function QuantityStepper({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="inline-flex h-9 items-center rounded-lg border border-border-strong bg-surface">
+      <button
+        type="button"
+        aria-label={`Decrease ${label}`}
+        disabled={value <= 1}
+        onClick={() => onChange(value - 1)}
+        className="flex h-full w-8 items-center justify-center text-muted hover:text-text disabled:opacity-40"
+      >
+        <Minus aria-hidden="true" className="size-3.5" />
+      </button>
+      <input
+        aria-label={`${label} quantity`}
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value.replace(/\D/g, '')) || 1)}
+        className="h-full w-9 border-x border-border bg-transparent text-center text-sm tabular-nums focus:outline-none"
+      />
+      <button
+        type="button"
+        aria-label={`Increase ${label}`}
+        onClick={() => onChange(value + 1)}
+        className="flex h-full w-8 items-center justify-center text-muted hover:text-text"
+      >
+        <Plus aria-hidden="true" className="size-3.5" />
+      </button>
+    </div>
+  );
+}
+
+function TotalLine({
+  divided,
+  label,
+  strong,
+  value,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  /** Draws a rule above the row (for totals); keeps <dt>/<dd> direct children of the row. */
+  divided?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-baseline justify-between py-1 text-sm',
+        divided && 'mt-1 border-t border-border pt-2',
+      )}
+    >
+      <dt className={strong ? 'font-medium text-text' : 'text-muted'}>{label}</dt>
+      <dd className={strong ? 'text-base font-semibold tabular-nums' : 'tabular-nums'}>
+        {value}
+      </dd>
+    </div>
+  );
 }
 
 export function OrderFormPage() {
@@ -95,118 +150,43 @@ export function OrderFormPage() {
   const { id } = useParams();
   const isEditing = Boolean(id);
   const { showToast } = useToast();
-  const { addons, customers, isLoading, products } = useOrderData();
-  const [existingOrder, setExistingOrder] = useState<InvoicePreviewData | null>(null);
-  const [isLoadingOrder, setIsLoadingOrder] = useState(isEditing);
-  const [orderLoadError, setOrderLoadError] = useState('');
+  const catalog = useCatalog();
+  const settings = useSettings();
+  const existing = useOrder(id);
+  const createOrder = useCreateOrder();
+  const updateOrder = useUpdateOrder(id ?? '');
   const [selectedProducts, setSelectedProducts] = useState<OrderProductItem[]>([]);
   const [selectedAddons, setSelectedAddons] = useState<OrderAddonItem[]>([]);
+  const [linkedCustomerName, setLinkedCustomerName] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [validationSummary, setValidationSummary] = useState('');
-  const { handleSubmit, register, reset, setValue, watch } = useForm<OrderFormValues>({
+  const [hasLoadedExisting, setHasLoadedExisting] = useState(false);
+  const { control, handleSubmit, register, reset, setValue } = useForm<OrderFormValues>({
     defaultValues,
   });
 
-  useEffect(() => {
-    if (isEditing) {
-      return;
-    }
+  // Subscribe only to the fields the summary needs, so typing in other fields
+  // does not re-render the whole page.
+  const [
+    discountPercent,
+    deliveryFee,
+    downpaymentPercent,
+    paymentMethod,
+    requestedStems,
+  ] = useWatch({
+    control,
+    name: [
+      'discountPercent',
+      'deliveryFee',
+      'downpaymentPercent',
+      'paymentMethod',
+      'requestedStems',
+    ],
+  });
 
-    let isActive = true;
-
-    settingsRepository.getActive().then(({ data }) => {
-      if (isActive && data) {
-        setValue('downpaymentPercent', data.default_downpayment_percent);
-      }
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [isEditing, setValue]);
-
-  useEffect(() => {
-    if (!id) {
-      return;
-    }
-
-    let isActive = true;
-
-    invoicesRepository.getPreviewById(id).then(({ data, error }) => {
-      if (!isActive) {
-        return;
-      }
-
-      if (error || !data) {
-        setOrderLoadError(error?.message ?? 'This order could not be found.');
-        setIsLoadingOrder(false);
-        return;
-      }
-
-      const { customer, invoice } = data;
-      setExistingOrder(data);
-      reset({
-        ...defaultValues,
-        customerId: invoice.customer_id ?? '',
-        customerName: invoice.customer_name,
-        phoneNumber: invoice.customer_phone ?? customer?.phone_number ?? '',
-        deliveryAddress: invoice.delivery_address ?? '',
-        deliveryDate: invoice.delivery_date ?? '',
-        discountPercent: invoice.discount_percent,
-        deliveryFee: invoice.delivery_fee,
-        paymentMethod: invoice.payment_method ?? 'cash',
-        orderNotes: invoice.notes ?? '',
-        status: invoice.status,
-      });
-      setSelectedProducts(
-        data.items.map((item) => ({
-          id: item.id,
-          productId: item.product_id,
-          productName: item.product_name ?? item.products?.product_name ?? 'Bouquet',
-          stemCount: null,
-          categoryName: '',
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          totalPrice: item.total_price,
-          colorId: item.color_id,
-          colorName: item.custom_color_name ?? item.color_name ?? '',
-          customColorName: item.custom_color_name,
-          isCustomColor: Boolean(item.custom_color_name),
-        })),
-      );
-      setSelectedAddons(
-        data.addons.map((line) => ({
-          id: line.id,
-          addonId: line.addon_id,
-          addonName: line.addon_name ?? line.addons?.addon_name ?? 'Add-on',
-          quantity: line.quantity,
-          unitPrice: line.unit_price,
-          totalPrice: line.total_price,
-        })),
-      );
-      setIsLoadingOrder(false);
-    });
-
-    return () => {
-      isActive = false;
-    };
-  }, [id, reset]);
-
-  useEffect(() => {
-    if (!receiptFile) {
-      setReceiptPreview('');
-      return;
-    }
-
-    const objectUrl = URL.createObjectURL(receiptFile);
-    setReceiptPreview(objectUrl);
-
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [receiptFile]);
-
-  const watched = watch();
+  const products = useMemo(() => catalog.data?.products ?? [], [catalog.data]);
+  const addons = useMemo(() => catalog.data?.addons ?? [], [catalog.data]);
   const availableProducts = useMemo(
     () => products.filter((product) => product.availability === 'available'),
     [products],
@@ -215,54 +195,85 @@ export function OrderFormPage() {
     () => addons.filter((addon) => addon.availability === 'available'),
     [addons],
   );
+
+  useEffect(() => {
+    if (!isEditing && settings.data) {
+      setValue('downpaymentPercent', settings.data.default_downpayment_percent);
+    }
+  }, [isEditing, setValue, settings.data]);
+
+  useEffect(() => {
+    if (!existing.data || hasLoadedExisting) {
+      return;
+    }
+
+    const { addons: addonLines, customer, invoice, items } = existing.data;
+    reset({
+      ...defaultValues,
+      customerId: invoice.customer_id ?? '',
+      customerName: invoice.customer_name,
+      phoneNumber: invoice.customer_phone ?? customer?.phone_number ?? '',
+      deliveryAddress: invoice.delivery_address ?? '',
+      deliveryDate: invoice.delivery_date ?? '',
+      discountPercent: invoice.discount_percent,
+      deliveryFee: invoice.delivery_fee,
+      paymentMethod: invoice.payment_method ?? 'cash',
+      orderNotes: invoice.notes ?? '',
+      status: invoice.status,
+    });
+    setLinkedCustomerName(customer?.full_name ?? null);
+    setSelectedProducts(
+      items.map((item) => ({
+        id: item.id,
+        productId: item.product_id,
+        productName: item.product_name ?? item.products?.product_name ?? 'Bouquet',
+        stemCount: null,
+        categoryName: '',
+        quantity: item.quantity,
+        unitPrice: item.unit_price,
+        totalPrice: item.total_price,
+        colorId: item.color_id,
+        colorName: item.custom_color_name ?? item.color_name ?? '',
+        customColorName: item.custom_color_name,
+        isCustomColor: Boolean(item.custom_color_name),
+      })),
+    );
+    setSelectedAddons(
+      addonLines.map((line) => ({
+        id: line.id,
+        addonId: line.addon_id,
+        addonName: line.addon_name ?? line.addons?.addon_name ?? 'Add-on',
+        quantity: line.quantity,
+        unitPrice: line.unit_price,
+        totalPrice: line.total_price,
+      })),
+    );
+    setHasLoadedExisting(true);
+  }, [existing.data, hasLoadedExisting, reset]);
+
   const pricing = useMemo(
     () =>
       calculatePricing(
         selectedProducts,
         selectedAddons,
-        Number(watched.discountPercent),
-        Number(watched.deliveryFee),
-        Number(watched.downpaymentPercent),
+        Number(discountPercent),
+        Number(deliveryFee),
+        Number(downpaymentPercent),
       ),
-    [
-      selectedAddons,
-      selectedProducts,
-      watched.deliveryFee,
-      watched.discountPercent,
-      watched.downpaymentPercent,
-    ],
+    [deliveryFee, discountPercent, downpaymentPercent, selectedAddons, selectedProducts],
   );
-  const paidSoFar = useMemo(
-    () =>
-      roundCurrency(
-        (existingOrder?.payments ?? []).reduce(
-          (sum, payment) => sum + Number(payment.amount),
-          0,
-        ),
-      ),
-    [existingOrder],
+  const paidSoFar = roundCurrency(
+    (existing.data?.payments ?? []).reduce(
+      (sum, payment) => sum + Number(payment.amount),
+      0,
+    ),
   );
   const suggestion = useMemo(
-    () =>
-      getSmartStemSuggestion(Number(watched.requestedStems), availableProducts, addons),
-    [addons, availableProducts, watched.requestedStems],
+    () => getSmartStemSuggestion(Number(requestedStems), availableProducts, addons),
+    [addons, availableProducts, requestedStems],
   );
 
-  const selectCustomer = (customerId: string) => {
-    const customer = customers.find((item) => item.id === customerId);
-    setValue('customerId', customerId);
-
-    if (customer) {
-      setValue('customerName', customer.full_name);
-      setValue('phoneNumber', customer.phone_number);
-      setValue('deliveryAddress', customer.delivery_address ?? '');
-      setValue('customerNotes', customer.notes ?? '');
-    }
-  };
-
-  const addProduct = (productId: string) => {
-    const product = products.find((item) => item.id === productId);
-
+  const addProduct = (product: Product | undefined) => {
     if (!product) {
       return;
     }
@@ -286,66 +297,6 @@ export function OrderFormPage() {
     ]);
   };
 
-  const updateProductColor = (lineId: string, colorValue: string) => {
-    setSelectedProducts((current) =>
-      current.map((item) => {
-        if (item.id !== lineId) {
-          return item;
-        }
-
-        if (colorValue === customColorValue) {
-          return {
-            ...item,
-            colorId: null,
-            colorName: item.customColorName ?? '',
-            customColorName: item.customColorName ?? '',
-            isCustomColor: true,
-          };
-        }
-
-        const product = products.find((productItem) => productItem.id === item.productId);
-        const color = product?.colors.find(
-          (productColor) => productColor.id === colorValue,
-        );
-
-        return {
-          ...item,
-          colorId: color?.id ?? null,
-          colorName: color?.color_name ?? '',
-          customColorName: null,
-          isCustomColor: false,
-        };
-      }),
-    );
-  };
-
-  const updateCustomColor = (lineId: string, customColorName: string) => {
-    setSelectedProducts((current) =>
-      current.map((item) =>
-        item.id === lineId
-          ? {
-              ...item,
-              colorName: customColorName.trim(),
-              customColorName,
-              isCustomColor: true,
-            }
-          : item,
-      ),
-    );
-  };
-
-  const updateProductQuantity = (lineId: string, value: string) => {
-    setSelectedProducts((current) =>
-      current.map((item) =>
-        item.id === lineId ? withQuantity(item, toQuantity(value)) : item,
-      ),
-    );
-  };
-
-  const removeProduct = (lineId: string) => {
-    setSelectedProducts((current) => current.filter((item) => item.id !== lineId));
-  };
-
   const addAddon = (addonId: string, quantity = 1) => {
     const addon = addons.find((item) => item.id === addonId);
 
@@ -353,45 +304,61 @@ export function OrderFormPage() {
       return;
     }
 
-    setSelectedAddons((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        addonId: addon.id,
-        addonName: addon.addon_name,
-        quantity,
-        unitPrice: addon.price,
-        totalPrice: roundCurrency(addon.price * quantity),
-      },
-    ]);
+    setSelectedAddons((current) => {
+      const existingLine = current.find((line) => line.addonId === addon.id);
+
+      if (existingLine) {
+        return current.map((line) =>
+          line.id === existingLine.id
+            ? withQuantity(line, line.quantity + quantity)
+            : line,
+        );
+      }
+
+      return [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          addonId: addon.id,
+          addonName: addon.addon_name,
+          quantity,
+          unitPrice: addon.price,
+          totalPrice: roundCurrency(addon.price * quantity),
+        },
+      ];
+    });
   };
 
-  const updateAddonQuantity = (lineId: string, value: string) => {
-    setSelectedAddons((current) =>
-      current.map((item) =>
-        item.id === lineId ? withQuantity(item, toQuantity(value)) : item,
-      ),
+  const updateProduct = (
+    lineId: string,
+    update: (line: OrderProductItem) => OrderProductItem,
+  ) =>
+    setSelectedProducts((current) =>
+      current.map((line) => (line.id === lineId ? update(line) : line)),
     );
-  };
 
-  const removeAddon = (lineId: string) => {
-    setSelectedAddons((current) => current.filter((item) => item.id !== lineId));
-  };
-
-  const acceptSuggestion = () => {
-    if (!suggestion) {
-      return;
+  const chooseColor = (line: OrderProductItem, value: string): OrderProductItem => {
+    if (value === customColorValue) {
+      return {
+        ...line,
+        colorId: null,
+        colorName: line.customColorName ?? '',
+        customColorName: line.customColorName ?? '',
+        isCustomColor: true,
+      };
     }
 
-    addProduct(suggestion.product.id);
+    const color = products
+      .find((product) => product.id === line.productId)
+      ?.colors.find((option) => option.id === value);
 
-    if (suggestion.extraStemAddon) {
-      addAddon(suggestion.extraStemAddon.id, suggestion.extraStemsNeeded);
-    }
-  };
-
-  const handleReceiptChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setReceiptFile(event.target.files?.[0] ?? null);
+    return {
+      ...line,
+      colorId: color?.id ?? null,
+      colorName: color?.color_name ?? '',
+      customColorName: null,
+      isCustomColor: false,
+    };
   };
 
   const submitOrder = handleSubmit(async (values) => {
@@ -399,18 +366,18 @@ export function OrderFormPage() {
       ...values,
       products: selectedProducts,
       addons: selectedAddons,
-      discountPercent: Number(values.discountPercent),
-      deliveryFee: Number(values.deliveryFee),
-      downpaymentPercent: Number(values.downpaymentPercent),
+      discountPercent: Number(values.discountPercent) || 0,
+      deliveryFee: Number(values.deliveryFee) || 0,
+      downpaymentPercent: Number(values.downpaymentPercent) || 0,
     });
 
     if (!parsed.success) {
-      setValidationSummary(parsed.error.issues[0]?.message ?? 'Please review the order.');
+      setValidationSummary(parsed.error.issues[0]?.message ?? 'Please check the order.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     setValidationSummary('');
-    setIsSubmitting(true);
 
     const order: Omit<OrderSavePayload, 'payment'> = {
       invoice: {
@@ -442,479 +409,532 @@ export function OrderFormPage() {
       })),
     };
 
-    if (id) {
-      const result = await invoicesRepository.updateOrder(id, order);
-      setIsSubmitting(false);
-
-      if (result.error || !result.data) {
-        showToast({
-          variant: 'error',
-          title: 'Order was not saved',
-          description: result.error?.message,
-        });
+    try {
+      if (id) {
+        const saved = await updateOrder.mutateAsync(order);
+        showToast({ variant: 'success', title: `${saved.invoice_number} updated` });
+        navigate(`/orders/${id}`);
         return;
       }
 
-      showToast({ variant: 'success', title: `${result.data.invoice_number} updated` });
-      navigate(`/orders/${id}/preview`);
-      return;
-    }
+      const isDigital = parsed.data.paymentMethod !== 'cash';
+      let receiptPath: string | null = null;
 
-    const isDigitalPayment = parsed.data.paymentMethod !== 'cash';
-    let receiptPath: string | null = null;
+      if (isDigital && receiptFile && pricing.downpaymentAmount > 0) {
+        setIsUploading(true);
+        const upload = await uploadReceipt(receiptFile, 'downpayments');
+        setIsUploading(false);
 
-    if (isDigitalPayment && receiptFile && pricing.downpaymentAmount > 0) {
-      const upload = await uploadReceipt(receiptFile, 'downpayments');
+        if (upload.error) {
+          throw new Error(`Receipt upload failed: ${upload.error.message}`);
+        }
 
-      if (upload.error) {
-        setIsSubmitting(false);
-        showToast({
-          variant: 'error',
-          title: 'Receipt upload failed',
-          description: upload.error.message,
+        receiptPath = upload.data.path;
+      }
+
+      try {
+        const saved = await createOrder.mutateAsync({
+          ...order,
+          payment: {
+            downpayment_percent: parsed.data.downpaymentPercent,
+            payment_method: parsed.data.paymentMethod,
+            reference_number: isDigital ? values.referenceNumber.trim() || null : null,
+            receipt_path: receiptPath,
+          },
         });
-        return;
+        showToast({ variant: 'success', title: `Order ${saved.invoice_number} created` });
+        navigate(`/orders/${saved.id}`);
+      } catch (error) {
+        if (receiptPath) {
+          await removeFile('receipts', receiptPath);
+        }
+        throw error;
       }
-
-      receiptPath = upload.data.path;
-    }
-
-    const result = await invoicesRepository.createOrder({
-      ...order,
-      payment: {
-        downpayment_percent: parsed.data.downpaymentPercent,
-        payment_method: parsed.data.paymentMethod,
-        reference_number: isDigitalPayment ? values.referenceNumber.trim() || null : null,
-        receipt_path: receiptPath,
-      },
-    });
-
-    if (result.error || !result.data) {
-      if (receiptPath) {
-        await removeFile('receipts', receiptPath);
-      }
-
-      setIsSubmitting(false);
+    } catch (error) {
+      setIsUploading(false);
       showToast({
         variant: 'error',
         title: 'Order was not saved',
-        description: result.error?.message,
+        description: error instanceof Error ? error.message : undefined,
       });
-      return;
     }
-
-    setIsSubmitting(false);
-    showToast({
-      variant: 'success',
-      title: `Invoice ${result.data.invoice_number} created`,
-    });
-    navigate(`/orders/${result.data.id}/preview`);
   });
 
-  if (isLoadingOrder) {
-    return <LoadingScreen text="Loading order..." />;
+  if (catalog.isPending || (isEditing && existing.isPending)) {
+    return <LoadingScreen label="Loading order form" />;
   }
 
-  if (orderLoadError) {
+  if (catalog.isError || existing.isError) {
     return (
-      <CrudPageContainer
-        title="Order not found"
-        subtitle={orderLoadError}
-        primaryAction={
-          <Button onClick={() => navigate('/orders')}>Back to Orders</Button>
-        }
-      />
+      <PageContainer size="narrow">
+        <ErrorState
+          title={
+            existing.isError
+              ? 'This order could not be loaded'
+              : 'The catalog could not load'
+          }
+          description={(existing.error ?? catalog.error)?.message}
+          onRetry={() => (existing.isError ? existing.refetch() : catalog.refetch())}
+        />
+      </PageContainer>
     );
   }
 
-  const submitLabel = isEditing ? 'Save Changes' : 'Create Invoice';
-  const balanceAfterEdit = Math.max(0, roundCurrency(pricing.totalAmount - paidSoFar));
+  const isSaving = isUploading || createOrder.isPending || updateOrder.isPending;
+  const balanceDue = isEditing
+    ? Math.max(0, roundCurrency(pricing.totalAmount - paidSoFar))
+    : pricing.remainingBalance;
+  const invoiceNumber = existing.data?.invoice.invoice_number;
 
   return (
-    <CrudPageContainer
-      title={existingOrder ? `Edit ${existingOrder.invoice.invoice_number}` : 'New Order'}
-      subtitle={
-        isEditing
-          ? 'Changes update this invoice. Recorded payments are kept.'
-          : 'An invoice number is assigned when you save.'
-      }
-      primaryAction={
-        <Button onClick={submitOrder} isLoading={isSubmitting}>
-          {submitLabel}
-        </Button>
-      }
-      tableSlot={
-        <div className="space-y-6">
-          {validationSummary ? (
-            <Alert
-              variant="error"
-              title="Check the order"
-              description={validationSummary}
-            />
-          ) : null}
-          <Card variant="elevated">
-            <CardBody className="space-y-4">
-              <SectionHeader title="1. Customer" showDivider={false} />
-              <Select
-                label="Existing Customer"
-                value={watched.customerId}
-                onChange={(event) => selectCustomer(event.target.value)}
-                options={[
-                  { label: 'Walk-in / new customer', value: '' },
-                  ...customers.map((customer) => ({
-                    label: `${customer.full_name} - ${customer.phone_number}`,
-                    value: customer.id,
-                  })),
-                ]}
+    <PageContainer>
+      <PageHeader
+        back={
+          id
+            ? { to: `/orders/${id}`, label: invoiceNumber ?? 'Order' }
+            : { to: '/orders', label: 'Orders' }
+        }
+        title={isEditing ? `Edit ${invoiceNumber}` : 'New order'}
+        description={
+          isEditing
+            ? 'Changes update the invoice. Recorded payments are kept.'
+            : 'The invoice number is assigned when you save.'
+        }
+      />
+
+      {validationSummary ? (
+        <Alert
+          variant="error"
+          title="Check the order"
+          description={validationSummary}
+          className="mb-6"
+        />
+      ) : null}
+
+      <form
+        onSubmit={submitOrder}
+        noValidate
+        className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start"
+      >
+        <div className="grid gap-6">
+          <Card>
+            <CardHeader title="Customer" />
+            <div className="grid gap-4 px-5 pb-5">
+              <CustomerPicker
+                selectedName={linkedCustomerName}
+                onSelect={(customer) => {
+                  setValue('customerId', customer.id);
+                  setValue('customerName', customer.full_name);
+                  setValue('phoneNumber', customer.phone_number);
+                  setValue('deliveryAddress', customer.delivery_address ?? '');
+                  setLinkedCustomerName(customer.full_name);
+                }}
+                onClear={() => {
+                  setValue('customerId', '');
+                  setLinkedCustomerName(null);
+                }}
               />
-              <div className="grid gap-4 md:grid-cols-2">
-                <Input label="Customer Name" required {...register('customerName')} />
-                <Input label="Phone" required {...register('phoneNumber')} />
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Input
-                  label="Delivery Date"
+                  label="Name"
                   required
-                  type="date"
-                  {...register('deliveryDate')}
+                  autoComplete="off"
+                  {...register('customerName')}
                 />
                 <Input
-                  label="Delivery Address"
+                  label="Phone"
                   required
-                  {...register('deliveryAddress')}
+                  type="tel"
+                  autoComplete="off"
+                  placeholder="09XX XXX XXXX"
+                  {...register('phoneNumber')}
                 />
               </div>
-            </CardBody>
+            </div>
           </Card>
 
-          <Card variant="elevated">
-            <CardBody className="space-y-4">
-              <SectionHeader title="2. Bouquets" showDivider={false} />
+          <Card>
+            <CardHeader title="Delivery" />
+            <div className="grid gap-4 px-5 pb-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
               <Input
-                label="Requested Stems"
-                type="number"
-                min={0}
-                {...register('requestedStems', { valueAsNumber: true })}
+                label="Date"
+                required
+                type="date"
+                min={isEditing ? undefined : manilaToday()}
+                {...register('deliveryDate')}
               />
-              {suggestion ? (
-                <Alert
-                  variant="info"
-                  title="Stem suggestion"
-                  description={`${suggestion.requestedStems} stems can use ${suggestion.product.product_name}${suggestion.extraStemAddon ? ` + ${suggestion.extraStemsNeeded} ${suggestion.extraStemAddon.addon_name}` : ''}.`}
-                  actions={
-                    <Button size="sm" onClick={acceptSuggestion}>
-                      Use Suggestion
-                    </Button>
-                  }
-                />
-              ) : null}
+              <Input
+                label="Address"
+                required
+                placeholder="Street, barangay, landmark"
+                {...register('deliveryAddress')}
+              />
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Bouquets" />
+            <div className="grid gap-4 px-5 pb-5">
               <Select
-                label="Add Bouquet"
+                aria-label="Add a bouquet"
                 value=""
-                onChange={(event) => addProduct(event.target.value)}
+                onChange={(event) =>
+                  addProduct(
+                    products.find((product) => product.id === event.target.value),
+                  )
+                }
                 options={[
-                  { label: 'Select bouquet', value: '' },
+                  { label: 'Add a bouquet…', value: '' },
                   ...availableProducts.map((product) => ({
-                    label: `${product.product_name} - ${formatOrderCurrency(product.base_price)}`,
+                    label: `${product.product_name} · ${formatCurrency(product.base_price)}`,
                     value: product.id,
                   })),
                 ]}
               />
+
               {selectedProducts.length === 0 ? (
-                <p className="text-sm text-muted">No bouquets added yet.</p>
-              ) : null}
-              <div className="grid gap-3">
-                {selectedProducts.map((item) => {
-                  const product = products.find(
-                    (productItem) => productItem.id === item.productId,
-                  );
-                  const selectedValue = item.isCustomColor
-                    ? customColorValue
-                    : (item.colorId ?? '');
-                  const colorOptions = (product?.colors ?? [])
-                    .filter(
-                      (color) =>
-                        color.availability === 'available' || color.id === item.colorId,
-                    )
-                    .map((color) => ({ label: color.color_name, value: color.id }));
+                <p className="rounded-lg border border-dashed border-border-strong px-4 py-6 text-center text-sm text-muted">
+                  No bouquets yet. Pick one above.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {selectedProducts.map((line) => {
+                    const product = products.find((item) => item.id === line.productId);
+                    const colorOptions = (product?.colors ?? [])
+                      .filter(
+                        (color) =>
+                          color.availability === 'available' || color.id === line.colorId,
+                      )
+                      .map((color) => ({ label: color.color_name, value: color.id }));
 
-                  if (
-                    item.colorId &&
-                    !colorOptions.some((o) => o.value === item.colorId)
-                  ) {
-                    colorOptions.push({ label: item.colorName, value: item.colorId });
-                  }
+                    if (
+                      line.colorId &&
+                      !colorOptions.some((option) => option.value === line.colorId)
+                    ) {
+                      colorOptions.push({ label: line.colorName, value: line.colorId });
+                    }
 
-                  return (
-                    <div
-                      key={item.id}
-                      className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_8rem_auto]"
-                    >
-                      <div>
-                        <p className="font-semibold text-text">{item.productName}</p>
-                        <p className="text-sm text-muted">
-                          {formatOrderCurrency(item.unitPrice)} each ·{' '}
-                          {formatOrderCurrency(item.totalPrice)}
-                        </p>
-                      </div>
-                      <Input
-                        label="Qty"
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateProductQuantity(item.id, event.target.value)
-                        }
-                      />
-                      <div className="flex items-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Remove ${item.productName}`}
-                          leftIcon={<Trash2 className="size-4" />}
-                          onClick={() => removeProduct(item.id)}
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                      <div className="grid gap-3 md:col-span-3 md:grid-cols-2">
-                        <Select
-                          label="Bouquet Color"
-                          required
-                          value={selectedValue}
-                          onChange={(event) =>
-                            updateProductColor(item.id, event.target.value)
-                          }
-                          options={[
-                            { label: 'Select bouquet color', value: '' },
-                            ...colorOptions,
-                            { label: 'Custom Color', value: customColorValue },
-                          ]}
-                        />
-                        {item.isCustomColor ? (
-                          <Input
-                            label="Custom Color Name"
+                    return (
+                      <li key={line.id} className="grid gap-3 p-3 sm:p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-text">{line.productName}</p>
+                            <p className="text-xs text-muted tabular-nums">
+                              {formatCurrency(line.unitPrice)} each
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <QuantityStepper
+                              label={line.productName}
+                              value={line.quantity}
+                              onChange={(quantity) =>
+                                updateProduct(line.id, (current) =>
+                                  withQuantity(current, quantity),
+                                )
+                              }
+                            />
+                            <span className="w-24 text-right text-sm font-medium tabular-nums">
+                              {formatCurrency(line.totalPrice)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove ${line.productName}`}
+                              onClick={() =>
+                                setSelectedProducts((current) =>
+                                  current.filter((item) => item.id !== line.id),
+                                )
+                              }
+                            >
+                              <Trash2 aria-hidden="true" className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Select
+                            label="Color"
                             required
-                            value={item.customColorName ?? ''}
-                            onChange={(event) =>
-                              updateCustomColor(item.id, event.target.value)
+                            value={
+                              line.isCustomColor ? customColorValue : (line.colorId ?? '')
                             }
+                            onChange={(event) =>
+                              updateProduct(line.id, (current) =>
+                                chooseColor(current, event.target.value),
+                              )
+                            }
+                            options={[
+                              { label: 'Choose a color', value: '' },
+                              ...colorOptions,
+                              { label: 'Other (type it)', value: customColorValue },
+                            ]}
                           />
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardBody>
+                          {line.isCustomColor ? (
+                            <Input
+                              label="Color name"
+                              required
+                              value={line.customColorName ?? ''}
+                              onChange={(event) =>
+                                updateProduct(line.id, (current) => ({
+                                  ...current,
+                                  colorName: event.target.value.trim(),
+                                  customColorName: event.target.value,
+                                }))
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <details className="rounded-lg bg-surface-muted px-4 py-3 text-sm">
+                <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-muted hover:text-text [&::-webkit-details-marker]:hidden">
+                  <Sparkles aria-hidden="true" className="size-4 text-primary" />
+                  Customer asked for a stem count?
+                </summary>
+                <div className="mt-3 grid gap-3">
+                  <Input
+                    label="Stems requested"
+                    type="number"
+                    min={0}
+                    containerClassName="max-w-40"
+                    {...register('requestedStems', { valueAsNumber: true })}
+                  />
+                  {suggestion ? (
+                    <Alert
+                      variant="info"
+                      description={`${suggestion.product.product_name}${
+                        suggestion.extraStemAddon
+                          ? ` + ${suggestion.extraStemsNeeded} × ${suggestion.extraStemAddon.addon_name}`
+                          : ''
+                      } makes ${suggestion.requestedStems} stems.`}
+                      actions={
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            addProduct(suggestion.product);
+                            if (suggestion.extraStemAddon) {
+                              addAddon(
+                                suggestion.extraStemAddon.id,
+                                suggestion.extraStemsNeeded,
+                              );
+                            }
+                          }}
+                        >
+                          Add these
+                        </Button>
+                      }
+                    />
+                  ) : null}
+                </div>
+              </details>
+            </div>
           </Card>
 
-          <Card variant="elevated">
-            <CardBody className="space-y-4">
-              <SectionHeader title="3. Add-ons" showDivider={false} />
+          <Card>
+            <CardHeader
+              title="Add-ons"
+              description="Ribbons, cards, chocolates and extras"
+            />
+            <div className="grid gap-3 px-5 pb-5">
               <Select
-                label="Add Add-on"
+                aria-label="Add an add-on"
                 value=""
                 onChange={(event) => addAddon(event.target.value)}
                 options={[
-                  { label: 'Select add-on', value: '' },
+                  { label: 'Add an add-on…', value: '' },
                   ...availableAddons.map((addon) => ({
-                    label: `${addon.addon_name} - ${formatOrderCurrency(addon.price)}`,
+                    label: `${addon.addon_name} · ${formatCurrency(addon.price)}`,
                     value: addon.id,
                   })),
                 ]}
               />
-              <div className="grid gap-3">
-                {selectedAddons.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid gap-3 rounded-lg border border-border p-4 md:grid-cols-[1fr_8rem_auto]"
-                  >
-                    <div>
-                      <p className="font-semibold text-text">{item.addonName}</p>
-                      <p className="text-sm text-muted">
-                        {formatOrderCurrency(item.unitPrice)} each ·{' '}
-                        {formatOrderCurrency(item.totalPrice)}
-                      </p>
-                    </div>
-                    <Input
-                      label="Qty"
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={item.quantity}
-                      onChange={(event) =>
-                        updateAddonQuantity(item.id, event.target.value)
-                      }
-                    />
-                    <div className="flex items-end">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Remove ${item.addonName}`}
-                        leftIcon={<Trash2 className="size-4" />}
-                        onClick={() => removeAddon(item.id)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardBody>
+              {selectedAddons.length ? (
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {selectedAddons.map((line) => (
+                    <li
+                      key={line.id}
+                      className="flex flex-wrap items-center justify-between gap-3 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-text">{line.addonName}</p>
+                        <p className="text-xs text-muted tabular-nums">
+                          {formatCurrency(line.unitPrice)} each
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <QuantityStepper
+                          label={line.addonName}
+                          value={line.quantity}
+                          onChange={(quantity) =>
+                            setSelectedAddons((current) =>
+                              current.map((item) =>
+                                item.id === line.id ? withQuantity(item, quantity) : item,
+                              ),
+                            )
+                          }
+                        />
+                        <span className="w-24 text-right text-sm font-medium tabular-nums">
+                          {formatCurrency(line.totalPrice)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Remove ${line.addonName}`}
+                          onClick={() =>
+                            setSelectedAddons((current) =>
+                              current.filter((item) => item.id !== line.id),
+                            )
+                          }
+                        >
+                          <Trash2 aria-hidden="true" className="size-4" />
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
           </Card>
 
-          <Card variant="elevated">
-            <CardBody className="space-y-4">
-              <SectionHeader title="4. Pricing" showDivider={false} />
-              <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader title="Status and notes" />
+            <div className="grid gap-4 px-5 pb-5">
+              <Select
+                label="Order status"
+                containerClassName="sm:max-w-60"
+                options={statusOptions}
+                {...register('status')}
+              />
+              <TextArea
+                label="Notes"
+                maxLength={1000}
+                placeholder="Card message, delivery instructions, special requests"
+                helperText="Printed on the invoice."
+                {...register('orderNotes')}
+              />
+            </div>
+          </Card>
+        </div>
+
+        <aside className="lg:sticky lg:top-6">
+          <Card>
+            <CardHeader title="Summary" />
+            <div className="grid gap-4 px-5 pb-5">
+              <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Discount %"
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   max={100}
                   {...register('discountPercent', { valueAsNumber: true })}
                 />
                 <Input
-                  label="Delivery Fee"
+                  label="Delivery fee"
                   type="number"
+                  inputMode="decimal"
                   min={0}
                   step="0.01"
                   {...register('deliveryFee', { valueAsNumber: true })}
                 />
-                {isEditing ? null : (
-                  <Input
-                    label="Downpayment %"
-                    type="number"
-                    min={0}
-                    max={100}
-                    {...register('downpaymentPercent', { valueAsNumber: true })}
-                  />
-                )}
               </div>
-              <KeyValueDisplay
-                items={[
-                  { label: 'Subtotal', value: formatOrderCurrency(pricing.subtotal) },
-                  {
-                    label: 'Discount',
-                    value: formatOrderCurrency(pricing.discountAmount),
-                  },
-                  {
-                    label: 'Delivery Fee',
-                    value: formatOrderCurrency(pricing.deliveryFee),
-                  },
-                  { label: 'Total', value: formatOrderCurrency(pricing.totalAmount) },
-                  ...(isEditing
-                    ? [
-                        { label: 'Paid So Far', value: formatOrderCurrency(paidSoFar) },
-                        {
-                          label: 'Balance Due',
-                          value: formatOrderCurrency(balanceAfterEdit),
-                        },
-                      ]
-                    : [
-                        {
-                          label: 'Downpayment',
-                          value: formatOrderCurrency(pricing.downpaymentAmount),
-                        },
-                        {
-                          label: 'Balance Due',
-                          value: formatOrderCurrency(pricing.remainingBalance),
-                        },
-                      ]),
-                ]}
-              />
-              {isEditing && paidSoFar > pricing.totalAmount ? (
-                <Alert
-                  variant="warning"
-                  title="Customer has overpaid"
-                  description={`Payments recorded (${formatOrderCurrency(paidSoFar)}) exceed the new total.`}
-                />
-              ) : null}
-            </CardBody>
-          </Card>
 
-          <Card variant="elevated">
-            <CardBody className="space-y-4">
-              <SectionHeader
-                title={isEditing ? '5. Status & Notes' : '5. Downpayment & Notes'}
-                showDivider={false}
-              />
-              <div className="grid gap-4 md:grid-cols-2">
-                <Select
-                  label="Order Status"
-                  options={statusOptions}
-                  {...register('status')}
+              <dl className="border-t border-border pt-3">
+                <TotalLine label="Subtotal" value={formatCurrency(pricing.subtotal)} />
+                {pricing.discountAmount > 0 ? (
+                  <TotalLine
+                    label="Discount"
+                    value={`-${formatCurrency(pricing.discountAmount)}`}
+                  />
+                ) : null}
+                {pricing.deliveryFee > 0 ? (
+                  <TotalLine
+                    label="Delivery"
+                    value={formatCurrency(pricing.deliveryFee)}
+                  />
+                ) : null}
+                <TotalLine
+                  label="Total"
+                  value={formatCurrency(pricing.totalAmount)}
+                  strong
+                  divided
                 />
-                {isEditing ? null : (
-                  <>
+              </dl>
+
+              {isEditing ? (
+                <dl className="rounded-lg bg-surface-muted px-3 py-2">
+                  <TotalLine label="Paid so far" value={formatCurrency(paidSoFar)} />
+                  <TotalLine
+                    label="Balance due"
+                    value={formatCurrency(balanceDue)}
+                    strong
+                  />
+                  {paidSoFar > pricing.totalAmount ? (
+                    <p className="mt-1 text-xs text-warning-text">
+                      Payments already exceed the new total.
+                    </p>
+                  ) : null}
+                </dl>
+              ) : (
+                <div className="grid gap-3 rounded-lg bg-surface-muted p-3">
+                  <p className="text-sm font-medium text-text">Downpayment</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Percent"
+                      type="number"
+                      min={0}
+                      max={100}
+                      {...register('downpaymentPercent', { valueAsNumber: true })}
+                    />
                     <Select
-                      label="Payment Method"
+                      label="Method"
                       options={paymentMethodOptions}
                       {...register('paymentMethod')}
                     />
-                    {watched.paymentMethod === 'cash' ? null : (
-                      <>
-                        <Input
-                          label="Reference Number"
-                          {...register('referenceNumber')}
-                        />
-                        <div>
-                          <Input
-                            label="Receipt"
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            onChange={handleReceiptChange}
-                          />
-                          {receiptPreview ? (
-                            <img
-                              src={receiptPreview}
-                              alt="Receipt preview"
-                              className="mt-3 max-h-48 rounded-xl border border-border object-contain"
-                            />
-                          ) : null}
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
+                  </div>
+                  {paymentMethod !== 'cash' && pricing.downpaymentAmount > 0 ? (
+                    <>
+                      <Input label="Reference no." {...register('referenceNumber')} />
+                      <Input
+                        label="Receipt"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) =>
+                          setReceiptFile(event.target.files?.[0] ?? null)
+                        }
+                      />
+                    </>
+                  ) : null}
+                  <dl>
+                    <TotalLine
+                      label="Collect now"
+                      value={formatCurrency(pricing.downpaymentAmount)}
+                    />
+                    <TotalLine
+                      label="Balance due"
+                      value={formatCurrency(balanceDue)}
+                      strong
+                    />
+                  </dl>
+                </div>
+              )}
+
+              <div className="grid gap-2">
+                <Button type="submit" size="lg" isLoading={isSaving}>
+                  {isEditing ? 'Save changes' : 'Create order'}
+                </Button>
+                <Button variant="ghost" onClick={() => navigate(-1)} disabled={isSaving}>
+                  Cancel
+                </Button>
               </div>
-              {isEditing ? (
-                <p className="text-sm text-muted">
-                  To add or review payments, use{' '}
-                  <button
-                    type="button"
-                    className="font-semibold text-primary-dark underline-offset-2 hover:underline"
-                    onClick={() => navigate(`/payments/${id}`)}
-                  >
-                    Payments
-                  </button>
-                  .
-                </p>
-              ) : null}
-              <TextArea
-                label="Order Notes"
-                maxLength={1000}
-                showCharacterCount
-                {...register('orderNotes')}
-              />
-            </CardBody>
+            </div>
           </Card>
-
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button variant="outline" onClick={() => navigate(-1)}>
-              Cancel
-            </Button>
-            <Button onClick={submitOrder} isLoading={isSubmitting}>
-              {submitLabel}
-            </Button>
-          </div>
-
-          <LoadingOverlay
-            isVisible={isSubmitting || isLoading}
-            message={isSubmitting ? 'Saving order...' : 'Loading catalog...'}
-          />
-        </div>
-      }
-    />
+        </aside>
+      </form>
+    </PageContainer>
   );
 }
