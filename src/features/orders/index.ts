@@ -1,11 +1,13 @@
-export { useOrderData } from '@/features/orders/hooks/useOrderData';
-export { calculatePricing } from '@/features/orders/utils/pricing';
-export { getSmartStemSuggestion } from '@/features/orders/utils/smartStemSuggestion';
+export {
+  getInvoicePaidAmount,
+  getInvoicePaymentStatus,
+  type InvoicePaymentStatus,
+} from '@/features/orders/utils/paymentStatus';
+export { calculatePricing, roundCurrency } from '@/features/orders/utils/pricing';
 export type {
   Order,
   OrderAddonItem,
   OrderFormValues,
   OrderProductItem,
   PricingSummary,
-  SmartStemSuggestion,
 } from '@/features/orders/types';

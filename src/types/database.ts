@@ -14,6 +14,20 @@ export type PaymentStatus = 'pending' | 'partially_paid' | 'paid';
 export type ProductAvailability = 'available' | 'unavailable';
 export type PaymentMethod = 'cash' | 'gcash' | 'bank_transfer' | 'maribank';
 export type UserRole = 'admin' | 'staff';
+export type InvoicePaymentState = 'unpaid' | 'partially_paid' | 'paid';
+
+export interface DashboardSummary {
+  today_orders: number;
+  open_orders: number;
+  month_revenue: number;
+  previous_month_revenue: number;
+  outstanding_balance: number;
+  unpaid_orders: number;
+  deliveries_next_7_days: number;
+  monthly_revenue: { month: string; total: number }[];
+  top_bouquets: { name: string; quantity: number }[];
+  status_counts: Partial<Record<InvoiceStatus, number>>;
+}
 
 export interface Database {
   public: {
@@ -195,6 +209,7 @@ export interface Database {
           invoice_number: string;
           customer_id: string | null;
           customer_name: string;
+          customer_phone: string | null;
           subtotal: number;
           discount_percent: number;
           discount_amount: number;
@@ -202,6 +217,7 @@ export interface Database {
           total_amount: number;
           downpayment_amount: number;
           remaining_balance: number;
+          payment_state: InvoicePaymentState;
           status: InvoiceStatus;
           notes: string | null;
           delivery_date: string | null;
@@ -246,6 +262,7 @@ export interface Database {
           id: string;
           invoice_id: string;
           product_id: string | null;
+          product_name: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -258,6 +275,7 @@ export interface Database {
           id?: string;
           invoice_id: string;
           product_id?: string | null;
+          product_name?: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -289,6 +307,7 @@ export interface Database {
           id: string;
           invoice_id: string;
           addon_id: string | null;
+          addon_name: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -297,6 +316,7 @@ export interface Database {
           id?: string;
           invoice_id: string;
           addon_id?: string | null;
+          addon_name?: string | null;
           quantity: number;
           unit_price: number;
           total_price: number;
@@ -416,8 +436,48 @@ export interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Views: {
+      customer_summaries: {
+        Row: Database['public']['Tables']['customers']['Row'] & {
+          order_count: number;
+          outstanding_balance: number;
+          last_order_at: string | null;
+        };
+        Relationships: [];
+      };
+    };
+    Functions: {
+      create_order: {
+        Args: {
+          p_invoice: Json;
+          p_items: Json;
+          p_addons?: Json;
+          p_payment?: Json | null;
+        };
+        Returns: Database['public']['Tables']['invoices']['Row'];
+      };
+      update_order: {
+        Args: {
+          p_invoice_id: string;
+          p_invoice: Json;
+          p_items: Json;
+          p_addons?: Json;
+        };
+        Returns: Database['public']['Tables']['invoices']['Row'];
+      };
+      dashboard_summary: {
+        Args: Record<string, never>;
+        Returns: DashboardSummary;
+      };
+      is_admin: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      record_payment: {
+        Args: { p_payment: Json };
+        Returns: Database['public']['Tables']['payments']['Row'];
+      };
+    };
     Enums: {
       invoice_status: InvoiceStatus;
       payment_status: PaymentStatus;

@@ -1,27 +1,21 @@
-import { Link } from 'react-router';
-
 import { PageContainer } from '@/components/layout/PageContainer';
+import { ButtonLink } from '@/components/ui';
 
 export function NotFoundPage() {
   return (
-    <PageContainer>
-      <section className="rounded-xl border border-border bg-surface p-8 text-center shadow-soft">
-        <div className="mx-auto flex size-28 items-center justify-center rounded-full border border-dashed border-border bg-background font-heading text-3xl font-semibold text-primary-dark">
-          404
-        </div>
-        <h1 className="mt-6 font-heading text-3xl font-semibold text-text">
-          Page Not Found
+    <PageContainer size="narrow">
+      <div className="py-20 text-center">
+        <p className="text-sm font-medium text-primary-dark">404</p>
+        <h1 className="mt-2 font-heading text-2xl font-medium text-text">
+          Page not found
         </h1>
         <p className="mt-2 text-sm text-muted">
-          This page may have moved or has not been created yet.
+          The link may be old, or the page was moved.
         </p>
-        <Link
-          to="/"
-          className="mt-8 inline-flex min-h-12 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-white transition hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        >
-          Return to Dashboard
-        </Link>
-      </section>
+        <ButtonLink to="/dashboard" variant="secondary" className="mt-6">
+          Back to dashboard
+        </ButtonLink>
+      </div>
     </PageContainer>
   );
 }

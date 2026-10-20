@@ -1,202 +1,362 @@
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useState } from 'react';
+import { ClipboardList, Eye, FileText, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router';
 
+import { PageContainer } from '@/components/layout/PageContainer';
 import {
-  Alert,
-  Breadcrumbs,
-  Button,
-  FilterPanel,
+  ButtonLink,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  ErrorState,
+  Menu,
+  OrderStatusBadge,
+  PageHeader,
+  Pagination,
+  PaymentStateBadge,
+  SearchInput,
   Select,
-  StatusChip,
+  orderStatusLabels,
+  useToast,
   type DataTableColumn,
 } from '@/components/ui';
+import { useAuth } from '@/features/auth';
 import {
-  ActionMenu,
-  CrudEmptyState,
-  CrudPageContainer,
-  CrudTable,
-  CrudToolbar,
-} from '@/features/crud';
-import { useOrderData, type Order } from '@/features/orders';
-import {
-  formatOrderCurrency,
-  formatOrderDate,
-} from '@/features/orders/utils/orderFormatters';
+  ORDERS_PAGE_SIZE,
+  useDeleteOrder,
+  useOrders,
+  type OrderListFilters,
+  type OrderListRow,
+  type OrderSort,
+} from '@/features/orders/api';
 import type { InvoiceStatus } from '@/types/database';
+import { formatCurrency } from '@/utils/formatCurrency';
+import { formatPhone } from '@/utils/formatPhone';
+import { formatDate, formatRelativeDay } from '@/utils/formatDate';
 
-const pageSize = 10;
+const statusOptions = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'open', label: 'Open (not completed)' },
+  ...(Object.keys(orderStatusLabels) as InvoiceStatus[]).map((status) => ({
+    value: status,
+    label: orderStatusLabels[status],
+  })),
+];
+
+const paymentOptions = [
+  { value: 'all', label: 'Any payment' },
+  { value: 'due', label: 'Has balance' },
+  { value: 'unpaid', label: 'Unpaid' },
+  { value: 'partially_paid', label: 'Partly paid' },
+  { value: 'paid', label: 'Paid' },
+];
+
+const sortOptions = [
+  { value: 'newest', label: 'Newest first' },
+  { value: 'delivery', label: 'Delivery date' },
+  { value: 'balance', label: 'Largest balance' },
+];
+
+function readFilters(params: URLSearchParams): OrderListFilters {
+  return {
+    search: params.get('q') ?? '',
+    status: (params.get('status') as OrderListFilters['status']) ?? 'all',
+    paymentState: (params.get('payment') as OrderListFilters['paymentState']) ?? 'all',
+    sort: (params.get('sort') as OrderSort) ?? 'newest',
+    page: Math.max(1, Number(params.get('page')) || 1),
+  };
+}
 
 export function OrdersPage() {
   const navigate = useNavigate();
-  const { errorMessage, isLoading, orders, refresh } = useOrderData();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [status, setStatus] = useState<InvoiceStatus | 'all'>('all');
-  const [page, setPage] = useState(1);
+  const { showToast } = useToast();
+  const { isAdmin } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const filters = readFilters(params);
+  const orders = useOrders(filters);
+  const deleteOrder = useDeleteOrder();
+  const [deleteTarget, setDeleteTarget] = useState<OrderListRow | null>(null);
+  const hasFilters =
+    filters.search !== '' || filters.status !== 'all' || filters.paymentState !== 'all';
 
-  const filteredOrders = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
+  const updateFilter = (key: string, value: string, defaultValue: string) => {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value === defaultValue) {
+          next.delete(key);
+        } else {
+          next.set(key, value);
+        }
+        if (key !== 'page') {
+          next.delete('page');
+        }
+        return next;
+      },
+      { replace: key !== 'page' },
+    );
+  };
 
-    return orders.filter((order) => {
-      const matchesSearch =
-        normalizedQuery.length === 0 ||
-        order.invoice_number.toLowerCase().includes(normalizedQuery) ||
-        (order.delivery_address ?? '').toLowerCase().includes(normalizedQuery);
-      const matchesStatus = status === 'all' || order.status === status;
+  const confirmDelete = async () => {
+    if (!deleteTarget) {
+      return;
+    }
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, searchQuery, status]);
-  const pageCount = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
-  const paginatedOrders = filteredOrders.slice((page - 1) * pageSize, page * pageSize);
+    try {
+      await deleteOrder.mutateAsync(deleteTarget.id);
+      showToast({ variant: 'success', title: `${deleteTarget.invoice_number} deleted` });
+      setDeleteTarget(null);
+    } catch (error) {
+      showToast({
+        variant: 'error',
+        title: 'Order was not deleted',
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  };
 
-  const columns: DataTableColumn<Order>[] = [
-    { id: 'invoice_number', header: 'Invoice Number', accessor: 'invoice_number' },
+  const columns: DataTableColumn<OrderListRow>[] = [
+    {
+      id: 'invoice',
+      header: 'Order',
+      cell: (row) => (
+        <div>
+          <p className="font-medium whitespace-nowrap tabular-nums">
+            {row.invoice_number}
+          </p>
+          <p className="text-xs text-muted">
+            {formatDate(row.created_at, 'MMM d, yyyy')}
+          </p>
+        </div>
+      ),
+    },
     {
       id: 'customer',
       header: 'Customer',
-      cell: (row) => row.customer_id ?? 'Customer record',
+      cell: (row) => (
+        <div className="max-w-48">
+          <p className="truncate">{row.customer_name}</p>
+          {row.customer_phone ? (
+            <p className="text-xs text-muted tabular-nums">
+              {formatPhone(row.customer_phone)}
+            </p>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: 'delivery',
+      header: 'Delivery',
+      hideBelow: 'md',
+      cell: (row) => (
+        <span className="whitespace-nowrap">{formatRelativeDay(row.delivery_date)}</span>
+      ),
     },
     {
       id: 'status',
-      header: 'Order Status',
-      cell: (row) => (
-        <StatusChip
-          status={row.status === 'out_for_delivery' ? 'out-for-delivery' : row.status}
-        />
-      ),
+      header: 'Status',
+      hideBelow: 'sm',
+      cell: (row) => <OrderStatusBadge status={row.status} />,
     },
     {
       id: 'payment',
-      header: 'Payment Status',
+      header: 'Payment',
+      hideBelow: 'lg',
+      cell: (row) => <PaymentStateBadge state={row.payment_state} />,
+    },
+    {
+      id: 'total',
+      header: 'Total',
+      align: 'right',
       cell: (row) => (
-        <StatusChip
-          status={
-            row.remaining_balance <= 0
-              ? 'paid'
-              : row.downpayment_amount > 0
-                ? 'partially-paid'
-                : 'unpaid'
-          }
-        />
+        <span className="tabular-nums">{formatCurrency(row.total_amount)}</span>
       ),
     },
     {
-      id: 'delivery_date',
-      header: 'Delivery Date',
-      cell: (row) => formatOrderDate(row.delivery_date),
-    },
-    {
-      id: 'delivery_address',
-      header: 'Delivery Address',
-      cell: (row) => row.delivery_address ?? 'No address',
-    },
-    {
-      id: 'total_amount',
-      header: 'Total Amount',
+      id: 'balance',
+      header: 'Balance',
       align: 'right',
-      cell: (row) => formatOrderCurrency(row.total_amount),
-    },
-    {
-      id: 'remaining_balance',
-      header: 'Remaining Balance',
-      align: 'right',
-      cell: (row) => formatOrderCurrency(row.remaining_balance),
-    },
-    {
-      id: 'created_at',
-      header: 'Created Date',
-      cell: (row) => formatOrderDate(row.created_at),
+      hideBelow: 'md',
+      cell: (row) => (
+        <span
+          className={
+            row.remaining_balance > 0
+              ? 'text-text tabular-nums'
+              : 'text-subtle tabular-nums'
+          }
+        >
+          {row.remaining_balance > 0 ? formatCurrency(row.remaining_balance) : '—'}
+        </span>
+      ),
     },
   ];
 
   return (
-    <CrudPageContainer
-      title="Orders & Invoices"
-      subtitle="Manage order records, pricing, delivery, payment status, and invoice generation."
-      breadcrumbs={
-        <Breadcrumbs
-          items={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Orders' }]}
+    <PageContainer>
+      <PageHeader
+        title="Orders"
+        description={
+          orders.data
+            ? `${orders.data.total} ${orders.data.total === 1 ? 'order' : 'orders'}`
+            : ' '
+        }
+        actions={
+          <ButtonLink
+            to="/orders/new"
+            leftIcon={<Plus aria-hidden="true" className="size-4" />}
+          >
+            New order
+          </ButtonLink>
+        }
+      />
+
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
+        <SearchInput
+          value={filters.search}
+          onChange={(value) => updateFilter('q', value, '')}
+          placeholder="Invoice no., customer, phone"
+          label="Search orders"
         />
-      }
-      primaryAction={
-        <Button onClick={() => navigate('/orders/new')}>Create Order</Button>
-      }
-      toolbarSlot={
-        <CrudToolbar
-          searchValue={searchQuery}
-          searchPlaceholder="Search invoice number or delivery address..."
-          onSearchChange={(value) => {
-            setPage(1);
-            setSearchQuery(value);
-          }}
-          onRefresh={refresh}
-          onCreate={() => navigate('/orders/new')}
-          createLabel="Create Order"
-        />
-      }
-      filterSlot={
-        <FilterPanel
-          title="Order Filters"
-          onApply={() => setPage(1)}
-          onReset={() => setStatus('all')}
-        >
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0">
           <Select
-            label="Order Status"
-            value={status}
-            onChange={(event) => {
-              setPage(1);
-              setStatus(event.target.value as InvoiceStatus | 'all');
-            }}
-            options={[
-              { label: 'All Statuses', value: 'all' },
-              { label: 'Pending', value: 'pending' },
-              { label: 'Confirmed', value: 'confirmed' },
-              { label: 'Preparing', value: 'preparing' },
-              { label: 'Ready', value: 'ready' },
-              { label: 'Out for Delivery', value: 'out_for_delivery' },
-              { label: 'Completed', value: 'completed' },
-              { label: 'Cancelled', value: 'cancelled' },
-            ]}
+            containerClassName="shrink-0"
+            aria-label="Order status"
+            value={filters.status}
+            onChange={(event) => updateFilter('status', event.target.value, 'all')}
+            options={statusOptions}
           />
-        </FilterPanel>
-      }
-      tableSlot={
-        <div className="space-y-4">
-          {errorMessage ? (
-            <Alert variant="error" title="Order error" description={errorMessage} />
-          ) : null}
-          <CrudTable
-            columns={columns}
-            data={paginatedOrders}
-            getRowId={(row) => row.id}
-            isLoading={isLoading}
-            emptyState={
-              <CrudEmptyState
-                title="No orders yet."
-                description="Create an order to generate an invoice record."
-                actionLabel="Create Order"
-                onAction={() => navigate('/orders/new')}
-              />
-            }
-            actions={(row) => (
-              <ActionMenu
-                onView={() => navigate(`/orders/${row.id}`)}
-                onEdit={() => navigate(`/orders/${row.id}/edit`)}
-                customActions={[
-                  {
-                    label: 'Preview',
-                    onClick: () => navigate(`/orders/${row.id}/preview`),
-                  },
-                ]}
-              />
-            )}
-            page={page}
-            pageCount={pageCount}
-            pageSize={pageSize}
-            onPageChange={setPage}
+          <Select
+            containerClassName="shrink-0"
+            aria-label="Payment"
+            value={filters.paymentState}
+            onChange={(event) => updateFilter('payment', event.target.value, 'all')}
+            options={paymentOptions}
+          />
+          <Select
+            containerClassName="shrink-0"
+            aria-label="Sort by"
+            value={filters.sort}
+            onChange={(event) => updateFilter('sort', event.target.value, 'newest')}
+            options={sortOptions}
           />
         </div>
-      }
-    />
+        {hasFilters ? (
+          <button
+            type="button"
+            className="h-10 px-2 text-sm font-medium text-muted hover:text-text"
+            onClick={() => setParams(new URLSearchParams(), { replace: true })}
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+
+      {orders.isError ? (
+        <ErrorState description={orders.error.message} onRetry={() => orders.refetch()} />
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={orders.data?.rows ?? []}
+          getRowId={(row) => row.id}
+          isLoading={orders.isPending}
+          onRowClick={(row) => navigate(`/orders/${row.id}`)}
+          rowLabel={(row) => `Open ${row.invoice_number} for ${row.customer_name}`}
+          renderMobileRow={(row) => (
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate font-medium text-text">
+                  {row.customer_name}
+                </span>
+                <span className="font-medium whitespace-nowrap tabular-nums">
+                  {formatCurrency(row.total_amount)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-xs text-muted">
+                <span className="tabular-nums">{row.invoice_number}</span>
+                <span>Delivery {formatRelativeDay(row.delivery_date)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <OrderStatusBadge status={row.status} />
+                <PaymentStateBadge state={row.payment_state} />
+                {row.remaining_balance > 0 ? (
+                  <span className="ml-auto text-xs text-warning-text tabular-nums">
+                    {formatCurrency(row.remaining_balance)} due
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
+          actions={(row) => (
+            <Menu
+              label={`Actions for ${row.invoice_number}`}
+              items={[
+                {
+                  label: 'Open',
+                  icon: <Eye aria-hidden="true" />,
+                  onSelect: () => navigate(`/orders/${row.id}`),
+                },
+                {
+                  label: 'Edit',
+                  icon: <Pencil aria-hidden="true" />,
+                  onSelect: () => navigate(`/orders/${row.id}/edit`),
+                },
+                {
+                  label: 'Invoice',
+                  icon: <FileText aria-hidden="true" />,
+                  onSelect: () => navigate(`/orders/${row.id}/invoice`),
+                },
+                {
+                  label: 'Record payment',
+                  icon: <Wallet aria-hidden="true" />,
+                  hidden: row.remaining_balance <= 0 || row.status === 'cancelled',
+                  onSelect: () => navigate(`/orders/${row.id}?pay=1`),
+                },
+                {
+                  label: 'Delete',
+                  icon: <Trash2 aria-hidden="true" />,
+                  isDanger: true,
+                  hidden: !isAdmin,
+                  onSelect: () => setDeleteTarget(row),
+                },
+              ]}
+            />
+          )}
+          empty={
+            hasFilters ? (
+              <EmptyState
+                title="No orders match these filters"
+                description="Try a different search or clear the filters."
+              />
+            ) : (
+              <EmptyState
+                icon={<ClipboardList aria-hidden="true" />}
+                title="No orders yet"
+                description="Orders you create appear here with their invoice and payments."
+                action={<ButtonLink to="/orders/new">Create the first order</ButtonLink>}
+              />
+            )
+          }
+          footer={
+            <Pagination
+              page={filters.page}
+              pageSize={ORDERS_PAGE_SIZE}
+              total={orders.data?.total ?? 0}
+              onPageChange={(page) => updateFilter('page', String(page), '1')}
+            />
+          }
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        title={`Delete ${deleteTarget?.invoice_number ?? 'order'}?`}
+        description="The order, its items and its payment records are removed permanently. To keep history, set the status to Cancelled instead."
+        confirmLabel="Delete order"
+        isDanger
+        isLoading={deleteOrder.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
+    </PageContainer>
   );
 }

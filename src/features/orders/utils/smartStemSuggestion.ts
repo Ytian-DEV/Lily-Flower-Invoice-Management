@@ -1,9 +1,9 @@
-import type { Addon, ProductViewModel } from '@/features/products';
+import type { Addon, Product } from '@/features/catalog/api';
 import type { SmartStemSuggestion } from '@/features/orders/types';
 
 export function getSmartStemSuggestion(
   requestedStems: number,
-  products: ProductViewModel[],
+  products: Product[],
   addons: Addon[],
 ): SmartStemSuggestion | null {
   if (requestedStems <= 0) {

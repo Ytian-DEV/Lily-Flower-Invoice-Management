@@ -18,4 +18,6 @@ export interface AuthState {
   profile: UserProfile | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  /** Admins can delete records and change business settings. */
+  isAdmin: boolean;
 }

@@ -22,6 +22,7 @@ import {
   CrudToolbar,
   DetailViewLayout,
 } from '@/features/crud';
+import { getInvoicePaymentStatus } from '@/features/orders';
 import {
   formatOrderCurrency,
   formatOrderDate,
@@ -58,15 +59,8 @@ const statusOptions = [
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
-const paymentStatusFor = (invoice: Invoice): StatusChipStatus => {
-  const paidAmount = Math.max(0, invoice.total_amount - invoice.remaining_balance);
-
-  if (paidAmount <= 0) {
-    return 'unpaid';
-  }
-
-  return invoice.remaining_balance <= 0 ? 'paid' : 'partially-paid';
-};
+const paymentStatusFor = (invoice: Invoice): StatusChipStatus =>
+  getInvoicePaymentStatus(invoice);
 
 export function InvoiceHistoryPage() {
   const navigate = useNavigate();

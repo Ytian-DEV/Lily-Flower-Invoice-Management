@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
 
-import { LoadingPage } from '@/pages/LoadingPage';
+import { LoadingScreen } from '@/components/ui';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 
 export function ProtectedRoute() {
@@ -8,7 +8,7 @@ export function ProtectedRoute() {
   const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingPage />;
+    return <LoadingScreen />;
   }
 
   if (!isAuthenticated) {

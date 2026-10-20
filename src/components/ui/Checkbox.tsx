@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 
 import { cn } from '@/utils/cn';
@@ -7,47 +7,41 @@ export interface CheckboxProps extends Omit<
   InputHTMLAttributes<HTMLInputElement>,
   'type'
 > {
-  label?: string;
-  helperText?: string;
-  error?: string;
+  label: ReactNode;
+  description?: ReactNode;
 }
 
 export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, error, helperText, id, label, ...props }, ref) => {
-    const checkboxId = id ?? props.name;
+  ({ className, description, id, label, ...props }, ref) => {
+    const generatedId = useId();
+    const checkboxId = id ?? generatedId;
 
     return (
-      <div className="grid gap-1">
-        <label
-          className="flex cursor-pointer items-start gap-3 text-sm text-text"
-          htmlFor={checkboxId}
-        >
-          <span className="relative mt-0.5">
-            <input
-              ref={ref}
-              id={checkboxId}
-              type="checkbox"
-              className={cn(
-                'peer size-5 appearance-none rounded-md border border-border bg-surface transition checked:border-primary checked:bg-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60',
-                error && 'border-primary-dark',
-                className,
-              )}
-              aria-invalid={error ? true : undefined}
-              {...props}
-            />
-            <Check
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0 m-auto size-4 text-white opacity-0 peer-checked:opacity-100"
-            />
-          </span>
-          {label ? <span className="font-medium">{label}</span> : null}
-        </label>
-        {error || helperText ? (
-          <p className={cn('pl-8 text-sm text-muted', error && 'text-primary-dark')}>
-            {error ?? helperText}
-          </p>
-        ) : null}
-      </div>
+      <label
+        htmlFor={checkboxId}
+        className={cn('flex cursor-pointer items-start gap-2.5 text-sm', className)}
+      >
+        <span className="relative mt-0.5 flex">
+          <input
+            ref={ref}
+            id={checkboxId}
+            type="checkbox"
+            className="peer size-4 appearance-none rounded border border-border-strong bg-surface transition-colors checked:border-primary checked:bg-primary focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none disabled:opacity-50"
+            {...props}
+          />
+          <Check
+            aria-hidden="true"
+            strokeWidth={3}
+            className="pointer-events-none absolute inset-0 m-auto size-3 text-white opacity-0 peer-checked:opacity-100"
+          />
+        </span>
+        <span>
+          <span className="font-medium text-text">{label}</span>
+          {description ? (
+            <span className="block text-xs text-muted">{description}</span>
+          ) : null}
+        </span>
+      </label>
     );
   },
 );

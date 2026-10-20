@@ -1,42 +1,55 @@
-import type { HTMLAttributes, PropsWithChildren } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 
 import { cn } from '@/utils/cn';
 
-export type CardVariant = 'default' | 'elevated' | 'outlined';
-
-export interface CardProps extends HTMLAttributes<HTMLDivElement> {
-  variant?: CardVariant;
-}
-
-const variantClasses: Record<CardVariant, string> = {
-  default: 'border border-border bg-surface',
-  elevated: 'border border-border bg-surface shadow-soft',
-  outlined: 'border border-border bg-transparent',
-};
-
-export function Card({ className, variant = 'default', ...props }: CardProps) {
+export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('rounded-xl', variantClasses[variant], className)} {...props} />
+    <div
+      className={cn('rounded-xl border border-border bg-surface shadow-card', className)}
+      {...props}
+    />
   );
 }
 
+interface CardHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+}
+
 export function CardHeader({
+  action,
   className,
+  description,
+  title,
   ...props
-}: PropsWithChildren<HTMLAttributes<HTMLDivElement>>) {
-  return <div className={cn('border-b border-border p-5', className)} {...props} />;
+}: CardHeaderProps) {
+  return (
+    <div
+      className={cn('flex items-start justify-between gap-4 px-5 pt-5 pb-3', className)}
+      {...props}
+    >
+      <div className="min-w-0">
+        <h2 className="text-[0.9375rem] font-semibold text-text">{title}</h2>
+        {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
 }
 
-export function CardBody({
-  className,
-  ...props
-}: PropsWithChildren<HTMLAttributes<HTMLDivElement>>) {
-  return <div className={cn('p-5', className)} {...props} />;
+export function CardBody({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('px-5 pb-5', className)} {...props} />;
 }
 
-export function CardFooter({
-  className,
-  ...props
-}: PropsWithChildren<HTMLAttributes<HTMLDivElement>>) {
-  return <div className={cn('border-t border-border p-5', className)} {...props} />;
+export function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-end gap-2 rounded-b-xl border-t border-border bg-surface-muted px-5 py-3',
+        className,
+      )}
+      {...props}
+    />
+  );
 }

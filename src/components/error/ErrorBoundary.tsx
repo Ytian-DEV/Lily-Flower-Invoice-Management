@@ -1,64 +1,46 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { RotateCcw } from 'lucide-react';
-
-import { Button, Card, CardBody } from '@/components/ui';
-import { LogoPlaceholder } from '@/components/layout/LogoPlaceholder';
-
-interface ErrorBoundaryProps {
-  children: ReactNode;
-}
 
 interface ErrorBoundaryState {
-  error: Error | null;
+  hasError: boolean;
 }
 
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = {
-    error: null,
-  };
+/** Last-resort boundary; it avoids depending on providers that may have failed. */
+export class ErrorBoundary extends Component<
+  { children: ReactNode },
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
-    return { error };
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { hasError: true };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Application error boundary caught an error.', {
-      error,
-      errorInfo,
-    });
+    console.error('Unhandled application error', error, errorInfo.componentStack);
   }
 
-  private handleReload = () => {
-    window.location.reload();
-  };
-
   render() {
-    if (!this.state.error) {
+    if (!this.state.hasError) {
       return this.props.children;
     }
 
     return (
-      <main className="min-h-screen bg-background px-4 py-10 text-text">
-        <Card variant="elevated" className="mx-auto max-w-xl">
-          <CardBody className="flex flex-col items-center py-12 text-center">
-            <LogoPlaceholder />
-            <p className="mt-6 text-sm font-semibold text-primary-dark">Runtime Error</p>
-            <h1 className="mt-2 font-heading text-3xl font-semibold">
-              Something went wrong
-            </h1>
-            <p className="mt-3 max-w-md text-sm text-muted">
-              The app hit an unexpected issue. Reloading usually restores the current
-              workflow.
-            </p>
-            <Button
-              className="mt-6"
-              leftIcon={<RotateCcw className="size-4" />}
-              onClick={this.handleReload}
-            >
-              Reload App
-            </Button>
-          </CardBody>
-        </Card>
+      <main className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="max-w-sm text-center">
+          <h1 className="font-heading text-2xl font-medium text-text">
+            Something went wrong
+          </h1>
+          <p className="mt-2 text-sm text-muted">
+            Reload the page to continue. Saved orders are not affected.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-6 h-10 rounded-lg bg-primary px-4 text-sm font-medium text-white hover:bg-primary-dark"
+          >
+            Reload
+          </button>
+        </div>
       </main>
     );
   }
