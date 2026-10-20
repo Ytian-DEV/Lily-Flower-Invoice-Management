@@ -17,7 +17,7 @@ import {
   CrudTable,
   CrudToolbar,
 } from '@/features/crud';
-import { useOrderData, type Order } from '@/features/orders';
+import { getInvoicePaymentStatus, useOrderData, type Order } from '@/features/orders';
 import {
   formatOrderCurrency,
   formatOrderDate,
@@ -54,7 +54,7 @@ export function OrdersPage() {
     {
       id: 'customer',
       header: 'Customer',
-      cell: (row) => row.customer_id ?? 'Customer record',
+      cell: (row) => row.customer_name,
     },
     {
       id: 'status',
@@ -68,17 +68,7 @@ export function OrdersPage() {
     {
       id: 'payment',
       header: 'Payment Status',
-      cell: (row) => (
-        <StatusChip
-          status={
-            row.remaining_balance <= 0
-              ? 'paid'
-              : row.downpayment_amount > 0
-                ? 'partially-paid'
-                : 'unpaid'
-          }
-        />
-      ),
+      cell: (row) => <StatusChip status={getInvoicePaymentStatus(row)} />,
     },
     {
       id: 'delivery_date',

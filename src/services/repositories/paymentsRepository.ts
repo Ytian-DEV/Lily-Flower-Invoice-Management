@@ -1,5 +1,14 @@
 import { supabase } from '@/lib/supabase';
-import type { TableInsert, TableUpdate } from '@/types/database';
+import type { PaymentMethod, TableInsert, TableUpdate } from '@/types/database';
+
+export type RecordPaymentPayload = {
+  invoice_id: string;
+  payment_method: PaymentMethod;
+  amount: number;
+  reference_number: string | null;
+  payment_date: string;
+  receipt_path: string | null;
+};
 
 export const paymentReceiptsRepository = {
   getByPaymentId(paymentId: string) {
@@ -43,6 +52,10 @@ export const paymentsRepository = {
   },
   remove(id: string) {
     return supabase.from('payments').delete().eq('id', id);
+  },
+  /** Inserts the payment and its receipt in one transaction; the invoice balance updates itself. */
+  record(payload: RecordPaymentPayload) {
+    return supabase.rpc('record_payment', { p_payment: payload });
   },
   listByInvoice(invoiceId: string) {
     return supabase

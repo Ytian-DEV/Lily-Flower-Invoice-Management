@@ -10,7 +10,8 @@ export type Order = TableRow<'invoices'>;
 
 export interface OrderProductItem {
   id: string;
-  productId: string;
+  /** Null when the catalog product was deleted after the order was placed. */
+  productId: string | null;
   productName: string;
   stemCount: number | null;
   categoryName: string;
@@ -25,7 +26,7 @@ export interface OrderProductItem {
 
 export interface OrderAddonItem {
   id: string;
-  addonId: string;
+  addonId: string | null;
   addonName: string;
   quantity: number;
   unitPrice: number;
@@ -65,7 +66,6 @@ export interface OrderFormValues {
   downpaymentPercent: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  cashReceived: number;
   referenceNumber: string;
   orderNotes: string;
   status: InvoiceStatus;

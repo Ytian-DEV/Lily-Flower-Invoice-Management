@@ -74,7 +74,8 @@ export function OrderDetailPage() {
               items:
                 items.length > 0
                   ? items.map((item) => ({
-                      label: item.products?.product_name ?? 'Bouquet',
+                      label:
+                        item.product_name ?? item.products?.product_name ?? 'Bouquet',
                       value: item.custom_color_name || item.color_name || 'No color',
                     }))
                   : [{ label: 'Bouquet Color', value: 'No bouquet lines' }],
